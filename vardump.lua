@@ -20,7 +20,7 @@ function vardump(var, prefix, dumped)
             if not dumped[v] then
                 res = res .. vardump(v, prefix .. pre, dumped)
             else
-                res = res .. prefix .. pre .. " = <" .. dumped[v] .. ">"
+                res = res .. prefix .. pre .. " = " .. dumped[v] .. ""
             end
         end
         if res == "" then

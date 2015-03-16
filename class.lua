@@ -43,7 +43,7 @@ function class(super)
         obj._class = self
 
         if super then
-            obj.super = super:_alloc()
+            obj._super = super:_alloc()
         end
 
         if obj._init then
