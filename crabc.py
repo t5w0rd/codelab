@@ -49,10 +49,19 @@ def unzip(path):
     f.close()
     return data
 
+def shell(cmd):
+    pipe = os.popen(cmd)
+    out = pipe.read()
+    pipe.close()
+    return out
 
 def main():
+    LUA_SIG = '\x1b\x4c\x75\x61'
+
     inroot = os.path.abspath(sys.argv[1])
     outroot = os.path.abspath(sys.argv[2])
+    luadec = os.path.abspath(sys.argv[3])
+
     if not os.path.exists(outroot):
         os.makedirs(outroot)
 
@@ -63,6 +72,8 @@ def main():
             zipname = fullname.replace(inroot, outroot, 1) + '.zip'
             zippath = os.path.dirname(zipname)
             luacname = zippath + os.path.sep + os.path.splitext(basename)[0] + '.luac'
+            luaname = zippath + os.path.sep + os.path.splitext(basename)[0] + '.lua'
+            txtname = zippath + os.path.sep + os.path.splitext(basename)[0] + '.txt'
 
             print '=> %s ...' % (luacname)
             
@@ -81,9 +92,18 @@ def main():
 
             data3 = unzip(zipname)
 
-            f = open(luacname, 'wb')
-            f.write(data3)
-            f.close()
+            if data3[:4] == LUA_SIG:
+                f = open(luacname, 'wb')
+                f.write(data3)
+                f.close()
+                
+                cmd = '%s %s>%s && rm %s' % (luadec, luacname, luaname, luacname)
+                shell(cmd)
+
+            else:
+                f = open(txtname, 'wb')
+                f.write(data3)
+                f.close()
 
             os.remove(zipname)
 
