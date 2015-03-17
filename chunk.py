@@ -10,18 +10,21 @@ chunk = Chunk('png_chunk')
 chunk.setProto('datalen:I, type:I, data:ihdr, crc:4')
 chunk.setProto('datalen:I, type:I, data:s:datalen, crc:4')
 
+class Chunk:
+    def __init__(self, proto):
+        proto = proto.replace(' ', '')
+        lst = proto.split(',')
+        vseq = list()
+        vmap = dict()
+        for v in lst:
+            (vname, vtype) = v.lsplit(':', 1)
+            vseq.append(vname)
+            vmap[vname] = [vtype, None]
 
-proto = chunk.proto.replace(' ', '')
-lst = proto.split(',')
-vmap = dict()
-vseq = list()
-for v in lst:
-    (name, type) = v.lsplit(':', 1)
-    vseq.append(name)
-    vmap[name] = [type, None]
+        self.vseq = vseq
+        self.vmap = vmap
 
 
-chunk.setData('type', '12')
 raw = chunk.pack(type = 12, data = data, datalen = len(data), crc = 1341234)
 
 chunk.unpack2(raw)
