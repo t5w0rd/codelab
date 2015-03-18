@@ -5,7 +5,8 @@ import re
 
 
 class Var:
-    def __init__(self, value, upvalue):
+    def __init__(self, vtype, value, upvalue):
+        self.type = vtype
         self.data = [value, upvalue]
 
 
@@ -87,7 +88,7 @@ class Type:
     def __init__(self, scope):
         self.scope = scope
 
-    def newVar(self, value, upvalue):
+    def newVar(self):
         pass
 
     def encode(self, var):
@@ -106,8 +107,9 @@ class Simple(Type):
         return struct.pack(self.packstr, var.getValue())
 
 
-    def newVar(self, value, upvalue):
-        return [value, upvalue]
+    def newVar(self):
+        newvar = Var(self, None, None)
+        return newvar
 
 
 class String(Type):
@@ -121,6 +123,10 @@ class String(Type):
         print 'MSG | encode: ' + str(self.length) + 's', var.getValue()
         return struct.pack(str(self.length) + 's', var.getValue())
 
+
+    def newVar(self):
+        newvar = Var(self, None, None)
+        return newvar
 
 class Struct(Type):
     def __init__(self, scope, proto): 
@@ -154,6 +160,14 @@ class Struct(Type):
                 data = data + res
 
         return data
+
+
+    def newVar(self, upvalue):
+        newvar = Var(None, upvalue)
+        mvmap = dict()
+        for mname in self.mseq:
+            mvmap[mname] = Var(None, newvar)
+
 
     def parseType(self, typestr, var):
         # ttt(expr)
@@ -207,7 +221,7 @@ t = scope['PKG']
 #body = Var({'data': Var('AB', body)}, pkg2)
 #pkg2.setValue({'hdr':hdr, 'body':body})
 
-pkg2 = Var(None, None)
+pkg2 = t.newVar(None)
 hdr = pkg2['hdr']
 hdr['len'] = 5
 hdr['result'] = 0
@@ -220,7 +234,7 @@ body['crc'] = 'abcd'
 
 
 
-t.encode(pkg2)
+print repr(t.encode(pkg2))
 
 
 
