@@ -2,6 +2,7 @@
 
 import struct
 import re
+import string
 
 
 class Variable:
@@ -12,22 +13,25 @@ class Variable:
         self.upvalue = upvalue
 
 
-    def __getitem__(self, mname):
-        '''var[mname]'''
-        if self.value[mname] == None:
-            typestr = self.type.mmap[mname]
+    def __getitem__(self, fname):
+        '''var[fname]'''
+        if self.value[fname] == None:
+            typestr = self.type.fmap[fname]
             vtype = self.type.scope.parseType(typestr, self)
-            newvar = vtype.defVar(mname)
+            newvar = vtype.allocVar(fname)
             newvar.upvalue = self
-            self.value[mname] = newvar
+            self.value[fname] = newvar
 
-        return self.value[mname]
+        return self.value[fname]
 
 
-    def __setitem__(self, mname, value):
-        '''var[mname] = value'''
+    def __setitem__(self, fname, value):
+        '''var[fname] = value'''
+        self.__getitem__(fname).setValue(value)
 
-        self.__getitem__(mname).setValue(value)
+
+    def isComplex(self):
+        return isinstance(self.value, dict)
 
 
     def setValue(self, value):
@@ -65,11 +69,11 @@ class Variable:
             return s + '    ' * level + ln
 
         res = str()
-        if isinstance(self.value, dict):
+        if self.isComplex():
             res = addln(res, '\'%s\': {' % (self.name), level)
             first = True
             vtype = self.type
-            for name in vtype.mseq:
+            for name in vtype.fseq:
                 var = self.value[name]
                 if not var == None:
                     s = var.dump(level = level + 1)
@@ -87,7 +91,31 @@ class Variable:
         return res
 
 
-    def parseValue(self, exprstr):
+    def parseLValue(self, exprstr):
+        flist = exprstr.split('.')
+        if len(flist) == 0 or len(flist[0]) == 0 or len(flist[-1]) == 0:
+            return None
+
+        scope = self
+        while scope != None:
+            # check f1.f2.f3 in scope
+            check = True
+            lvar = scope
+            for name in flist:
+                if lvar.isComplex() and name in lvar.value:
+                    lvar = lvar.value[name]
+                else:
+                    check = False
+                    break;
+            if check:
+                return lvar
+
+            scope = scope.upvalue
+
+        return None
+
+
+    def parseRValue(self, exprstr):
         # 0 / 121
         if exprstr.isdigit():
             return int(exprstr)
@@ -97,30 +125,15 @@ class Variable:
             return int(exprstr, 16)
 
         # datalen / hdr2.data.len
-        nlist = exprstr.split('.')
-        if len(nlist) > 0 and len(nlist[0]) > 0 and len(nlist[-1]) > 0:
-            svar = self
-            while svar != None:
-                check = True
-                mvar = svar
-                for name in nlist:  # hdr2, data, len
-                    mvl = mvar.value
-                    if isinstance(mvl, dict) and name in mvl:
-                        mvar = mvl[name]  # mvar = mvar.value[name]
-                    else:
-                        check = False
-                        break;
-                if check:
-                    return mvar.value
-
-                svar = svar.upvalue
-
-            return None
-
+        lvar = self.parseLValue(exprstr)
+        if lvar != None:
+            if lvar.isComplex():
+                return lvar  # return l-value
+            else:
+                return lvar.value  # return r-value
+        
         return None
 
-
-reBetweenBrackets = re.compile('\((.*)\)')
 
 class Type:
     def __init__(self, scope, name):
@@ -128,7 +141,11 @@ class Type:
         self.name = name
 
 
-    def defVar(self, name):
+    def allocVar(self, name):
+        fakename = name.replace('_', 'a')
+        if not fakename[0].isalpha() or not fakename.isalnum():
+            return None
+
         return Variable(self, name)
 
 
@@ -171,25 +188,25 @@ class String(Basic):
 
 class Struct(Type):
     def __init__(self, scope, name, proto):
-        '''proto: ((mname, typestr), (mname, typestr), ...)'''
+        '''proto: ((fname, typestr), (fname, typestr), ...)'''
         Type.__init__(self, scope, name)
 
-        mseq = [mname for mname, typestr in proto]  # member sequence
-        mmap = dict(proto)  # member name-typestr map
+        fseq = [fname for fname, typestr in proto]  # member sequence
+        fmap = dict(proto)  # member name-typestr map
 
-        self.mseq = mseq
-        self.mmap = mmap
+        self.fseq = fseq
+        self.fmap = fmap
 
 
     def encode(self, var, level = 0):
         print '    ' * level + '%s %s = %s' % (self.name, var.name, '{')
         data = str()
-        for mname in self.mseq:
-            mtype = self.scope.parseType(self.mmap[mname], var)
-            mvar = var.value[mname]
-            res = mtype.encode(mvar, level = level + 1)
+        for fname in self.fseq:
+            ftype = self.scope.parseType(self.fmap[fname], var)
+            fvar = var.value[fname]
+            res = ftype.encode(fvar, level = level + 1)
             if res == None:
-                #print 'ERR | encode:' + mname
+                #print 'ERR | encode:' + fname
                 return None
             else:
                 data += res
@@ -199,48 +216,57 @@ class Struct(Type):
 
     def decode(self, var, data, level = 0):
         pos = 0
-        for mname in self.mseq:
-            mtype = self.scope.parseType(self.mmap[mname], var)
-            if var.value[mname] == None:
-                var.value[mname] = mtype.defVar(mname)
-            mvar = var.value[mname]
-            size = mtype.calcsize(mvar)
-            mtype.decode(mvar, data[pos: pos + size], level = level + 1)
+        for fname in self.fseq:
+            ftype = self.scope.parseType(self.fmap[fname], var)
+            if var.value[fname] == None:
+                var.value[fname] = ftype.allocVar(fname)
+            fvar = var.value[fname]
+            size = ftype.calcsize(fvar)
+            ftype.decode(fvar, data[pos: pos + size], level = level + 1)
             pos += size
 
 
     def calcsize(self, var):
         size = 0
-        for mname in self.mseq:
-            mtype = self.scope.parseType(self.mmap[mname], var)
-            mvar = var.value[mname]
-            res = mtype.calcsize(mvar)
+        for fname in self.fseq:
+            ftype = self.scope.parseType(self.fmap[fname], var)
+            fvar = var.value[fname]
+            res = ftype.calcsize(fvar)
             size += res
         return size
 
 
-    def defVar(self, name):
-        newvar = Type.defVar(self, name)
-        mvmap = dict()
-        for mname in self.mseq:
-            mvmap[mname] = None
+    def allocVar(self, name):
+        newvar = Type.allocVar(self, name)
+        if newvar == None:
+            return None
 
-        newvar.setValue(mvmap)
+        fvmap = dict()
+        for fname in self.fseq:
+            fvmap[fname] = None
+        
+        newvar.value = fvmap
         return newvar
-
-
-    
 
 
 class Scope(Variable):
     def __init__(self, name):
         Variable.__init__(self, None, name, value = dict(), upvalue = None)
         self.tmap = {
-                'uint8': Basic(self, 'uint8', 'B'),
-                'uint16': Basic(self, 'uint16', 'H'),
-                'uint32': Basic(self, 'uint32', 'I'),
-                'uint64': Basic(self, 'uint64', 'Q')
-                }
+            'uint8': Basic(self, 'uint8', 'B'),
+            'uint16': Basic(self, 'uint16', 'H'),
+            'uint32': Basic(self, 'uint32', 'I'),
+            'uint64': Basic(self, 'uint64', 'Q')}
+    
+
+    def getVar(self, name):
+        if name in self.value:
+            return self.value[name]
+        return None
+
+
+    def getType(self, typestr):
+        return self.parseType(typestr, self)
 
 
     def defType(self, name, proto):
@@ -251,7 +277,13 @@ class Scope(Variable):
 
     def defVar(self, name, typestr):
         vtype = self.parseType(typestr, self)
-        newvar = vtype.defVar(name)
+        if vtype == None:
+            return None
+
+        newvar = vtype.allocVar(name)
+        if newvar == None:
+            return None
+
         newvar.upvalue = self
         self.value[name] = newvar
         return newvar
@@ -261,7 +293,10 @@ class Scope(Variable):
         # vtype(expr)
         expr = reBetweenBrackets.findall(typestr)
         if len(expr) > 0:
-            expr = var.parseValue(expr[0])
+            expr = var.parseRValue(expr[0])
+            if isinstance(expr, Variable):  # l-value
+                return None
+            
             vtype = typestr[:typestr.find('(', 1)]
 
             if vtype in ('string'):
@@ -274,50 +309,151 @@ class Scope(Variable):
             else:
                 typestr = vtype + '()'
 
-        # vtype
         if typestr in self.tmap:
             return self.tmap[typestr]
 
-        print '@ERR | typestr(%s)' % (typestr)
+        #print 'ERR | typestr(%s)' % (typestr)
         return None
 
 
+class State:
+    def __init__(self, states, init):
+        '''states: {state1, state2, ...}'''
+        assert(not None in states and init in states)
+        self.states = states
+        self.state = init
+        self.stack = list()
 
-class Context:
+
+    def set(self, state):
+        '''replace cur state with new state'''
+        assert(state in self.states)
+        self.state = state
+
+
+    def get(self):
+        assert(self.state != None)
+        return self.state
+
+
+    def push(self, state):
+        '''push cur state and set to new state'''
+        assert(self.state != None and state in self.states)
+        self.stack.append(self.state)
+        self.state = state
+
+
+    def pop(self):
+        '''pop state from stack and replace cur state'''
+        assert(len(self.stack) > 0)
+        self.state = self.stack.pop()
+
+
+class Parser:
     def __init__(self):
         self.scope = Scope('GLOBAL')
 
 
-    def defType(self, name, protostr):
-        proto = [p.split(':', 1) for p in protostr.split(',')]
-        return self.scope.defType(name, proto)
+class MyParser(Parser):
+    def __init__(self):
+        Parser.__init__(self)
+        self.state = State({'idle', 'typedef'}, 'idle')
+        self.keywords = {''}
 
 
-    def parseLine(self, ln):
-        '''proto HDR ='''
-        ln = ln.strip(' \t\r\n')
-        protostr = wipechars(ln, ' \t\r\n')
+    def parseLine(self, line):
+        # TYPE = field1:type1 + field2:type2(334)
+        # var:TYPE
+        # var.field = 3
+        # pkg.var = var
+        #orgline = line
+        words = reMyParserParseLine.findall(line)
+        print 'DBG | ' + repr(words)
+        while len(words) > 0:
+            word = words.pop(0)  # pop first word
+            if word in self.keywords:  # keyword
+                pass
+            else:  # not a keyword
+                if len(words) > 0: # normal statement
+                    if words[0] == '=' and len(words) >= 3 and words[2] == ':':  # TYPE = field1:type1 ...
+                        tname = word  # type
+                        proto = list()
+                        while len(words) >= 4:
+                            words.pop(0)  # pop = or +
+                            fname = words.pop(0)  # pop field name
+                            words.pop(0)  #pop :
+                            ftypestr = words.pop(0)  # pop field typestr
+                            proto.append((fname, ftypestr))
+                        
+                        if len(proto) == 0 or len(words) > 0:  # failed
+                            self.error(SyntaxError, 'invalid syntax: %s' % (line))
+                            return
 
+                        self.scope.defType(tname, proto)
+                        print 'DBG | define type(%s) succ' % (tname)
 
-    def wipechars(s, chars):
-        lst = list()
-        for c in s:
-            if not c in chars:
-                lst.append(c)
+                    elif words[0] == ':':  # var:TYPE
+                        vname = word  # var name
+                        words.pop(0)  # pop :
+                        if (len(words) != 1):  # failed
+                            self.error(SyntaxError, 'invalid syntax: %s' % (line))
+                            return
 
-        return ''.join(lst)
+                        vtypestr = words.pop(0)  # pop type name
+                        var = self.scope.defVar(vname, vtypestr)
+                        if var == None:  # failed
+                            self.error(TypeError, 'type(%s) is not defined or cannot be parsed: %s' % (vtypestr, line))
+                            return
 
+                        print 'DBG | define var(%s:%s) succ' % (vname, var.type.name)
+                            
+                    elif words[0] == '=': # var = value
+                        # hdr.len = 5
+                        # hdr = pkg.hdr
+                        if len(words) != 2:  # failed
+                            self.error(SyntaxError, 'invalid syntax: %s' % (line))
+                            return
+
+                        lexpr = word  # l-value
+                        words.pop(0)  # pop =
+                        rexpr = words.pop(0)  # pop r-value
+                        
+
+                        #for fname in lexpr.split('.'):
+                        #lvar = self.scope.parseLValue(lexpr)
+                        #rvalue = self.scope.parse
+                        print lexpr + ' = ' + rexpr
+                        print repr(self.scope.parseLValue(lexpr))
+                        print repr(self.scope.parseRValue(rexpr))
+
+                        pass
+
+                    else:  # unsupported syntax
+                        self.error(SyntaxError, 'unsupported syntax: %s' % (line))
+                        return
+
+                else:  # var
+                    self.error(SyntaxError, 'unsupported syntax: %s' % (line))
+                    return
+
+    def error(self, e, msg):
+        raise e, msg
         
         
-c = Context()
-scope = c.scope
+reBetweenBrackets = re.compile(r'\((.*)\)')
+reMyParserParseLine = re.compile(r'\'.*\'|".*"|[+=:]|[\w_.()]+')
 
-c.defType('HDR', 'len:uint16,result:uint8')
-c.defType('BODY(0)', 'data:string(hdr.len),crc:string(4)')
-c.defType('BODY(1)', 'msg:string(10)')
-c.defType('PKG', 'hdr:HDR,body:BODY(hdr.result)')
-pkg = scope.defVar('pkg', 'PKG')
+p = MyParser()
+scope = p.scope
 
+p.parseLine('HDR = len: uint16 + result: uint8')
+p.parseLine('BODY(0) = data: string(hdr.len) + crc: string(4)')
+p.parseLine('BODY(1) = msg: string(10)')
+p.parseLine('PKG = hdr: HDR + body: BODY(hdr.result)')
+p.parseLine('pkg: PKG')
+p.parseLine('hdr = pkg')
+
+'''
 hdr = scope.defVar('hdr', 'HDR')
 hdr['len'] = 3
 hdr['result'] = 0
@@ -357,4 +493,4 @@ print pkg2.dump()
 
 #scope['PKT'] = Struct(scope, 'hdr:HDR, hdr2:HDR, body:BODY(hdr.result)')
 
-
+'''
