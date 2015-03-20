@@ -104,7 +104,7 @@ class Variable:
 
     def parseLValue(self, expr):
         flist = expr.split('.')
-        if len(flist) == 0 or len(flist[0]) == 0 or len(flist[-1]) == 0:
+        if len(flist) == 0 or flist[0] == '' or flist[-1] == '':
             return None
 
         scope = self
@@ -127,6 +127,9 @@ class Variable:
 
 
     def parseRValue(self, expr):
+        if expr == '':
+            return None
+
         # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101 / 'as\ndf' / "ABd\x3fdi\t"
         val = Variable.toValue(expr)
         if val != None:
@@ -177,7 +180,7 @@ class Type:
         if not fakename[0].isalpha() or not fakename.isalnum():
             return None
 
-        print 'DBG | alloc var(%s:%s)' % (name, self.name)
+        #print 'DBG | alloc var(%s:%s)' % (name, self.name)
         return Variable(self, name)
 
 
@@ -196,7 +199,6 @@ class Type:
 class Basic(Type):
     def __init__(self, scope, name, packstr):
         Type.__init__(self, scope, name)
-
         self.packstr = packstr
 
 
@@ -207,6 +209,7 @@ class Basic(Type):
 
     def decode(self, var, data, level = 0):
         var.value = struct.unpack_from(self.packstr, data)[0]
+        print '    ' * level + '%s %s = %s' % (self.name, var.name, repr(var.value))
 
 
     def calcsize(self, var):
@@ -219,6 +222,28 @@ class String(Basic):
             Basic.__init__(self, scope, 'string()', '')
         else:
             Basic.__init__(self, scope, 'string(%d)' % (length), '%ds' % (length))
+
+
+    def encode(self, var, level = 0):
+        packstr = self.__packstr(var)
+        print '    ' * level + '%s %s = %s' % (self.name, var.name, repr(var.value[:int(packstr[:-1])]))
+        return struct.pack(packstr, var.value)
+
+
+    def decode(self, var, data, level = 0):
+        packstr = self.__packstr(var)
+        var.value = struct.unpack_from(packstr, data)[0]
+        print '    ' * level + '%s %s = %s' % (self.name, var.name, repr(var.value[:int(packstr[:-1])]))
+
+
+    def calcsize(self, var):
+        return struct.calcsize(self.__packstr(var))
+
+
+    def __packstr(self, var):
+        if self.packstr == '':
+            return '%ds' % (len(var.value))
+        return self.packstr
 
 
 class Struct(Type):
@@ -250,15 +275,19 @@ class Struct(Type):
 
 
     def decode(self, var, data, level = 0):
+        print '    ' * level + '%s %s = %s' % (self.name, var.name, '{')
         pos = 0
         for fname in self.fseq:
             ftype = self.scope.parseType(self.fmap[fname], var)
-            if var.value[fname] == None:
-                var.value[fname] = ftype.allocVar(fname)
             fvar = var.value[fname]
+            if fvar == None:
+                fvar = ftype.allocVar(fname)
+                fvar.upvalue = var
+                var.value[fname] = fvar
+            ftype.decode(fvar, data[pos:], level = level + 1)
             size = ftype.calcsize(fvar)
-            ftype.decode(fvar, data[pos: pos + size], level = level + 1)
             pos += size
+        print '    ' * level + '}'
 
 
     def calcsize(self, var):
@@ -289,9 +318,9 @@ class Scope(Variable):
         Variable.__init__(self, None, name, value = dict(), upvalue = None)
         self.tmap = {
             'uint8': Basic(self, 'uint8', 'B'),
-            'uint16': Basic(self, 'uint16', 'H'),
-            'uint32': Basic(self, 'uint32', 'I'),
-            'uint64': Basic(self, 'uint64', 'Q')}
+            'uint16': Basic(self, 'uint16', '>H'),
+            'uint32': Basic(self, 'uint32', '>I'),
+            'uint64': Basic(self, 'uint64', '>Q')}
     
 
     def getVar(self, name):
@@ -326,21 +355,24 @@ class Scope(Variable):
 
     def parseType(self, typestr, var):
         # vtype(expr)
-        expr = reBetweenBrackets.findall(typestr)
-        if len(expr) > 0:
-            val = var.parseRValue(expr[0])
+        exprs = reBetweenBrackets.findall(typestr)
+        if len(exprs) == 1:
+            val = var.parseRValue(exprs[0])
             if isinstance(val, dict):  # struct value
+                assert(False)
                 return None
             
             vtype = typestr[:typestr.find('(', 1)]
 
             if vtype in ('string'):
-                if isinstance(val, int) or val == None:
+                if isinstance(val, int) or exprs[0] == '':
                     return String(self, val)
                 else:
+                    assert(False)
                     return None
 
             if val == None:
+                assert(False)
                 return None
 
             typestr = vtype + '(' + repr(val) + ')'
@@ -354,6 +386,7 @@ class Scope(Variable):
             return self.tmap[typestr]
 
         #print 'ERR | typestr(%s)' % (typestr)
+        assert(False)
         return None
 
 
@@ -400,6 +433,12 @@ class MyParser(Parser):
         Parser.__init__(self)
         self.state = State({'idle'}, 'idle')
         self.keywords = {}
+        self.funcions = {
+            'print': ('R*', MyParser.func_print),
+            'encode': ('L', MyParser.func_encode),
+            'decode': ('LR', MyParser.func_decode),
+            'dump': ('L', MyParser.func_dump)
+        }
 
 
     def parseLine(self, line):
@@ -408,8 +447,8 @@ class MyParser(Parser):
         # var.field = 3
         # pkg.var = var
         #orgline = line
-        words = reMyParserParseLine.findall(line)
-        print 'DBG | ' + repr(words)
+        words = reMyParserParseLine.findall(MyParser.wipeChars(line, ' \t\n\r'))
+        #print 'DBG | ' + repr(words)
         while len(words) > 0:
             word = words.pop(0)  # pop first word
             if word in self.keywords:  # keyword
@@ -432,7 +471,7 @@ class MyParser(Parser):
                             return
 
                         self.scope.defType(tname, proto)
-                        print 'DBG | define type(%s) succ' % (tname)
+                        #print 'DBG | define type(%s) succ' % (tname)
 
                     elif words[0] == ':':  # var:TYPE
                         vname = word  # var name
@@ -447,7 +486,7 @@ class MyParser(Parser):
                             self.error(NameError, 'type(%s) is not defined or cannot be parsed: %s' % (vtypestr, line))
                             return
 
-                        print 'DBG | define var(%s:%s) succ' % (vname, var.type.name)
+                        #print 'DBG | define var(%s:%s) succ' % (vname, var.type.name)
                             
                     elif words[0] == '=': # var = value
                         # hdr.len = 5
@@ -467,30 +506,116 @@ class MyParser(Parser):
                             if fvar == None:
                                 self.error(NameError, 'unresolved var(%s): %s' % (lexpr, line))
                                 return
-                        #print lexpr + ' = ' + repr(self.scope.parseRValue(rexpr))
-                        fvar.value = self.scope.parseRValue(rexpr)
-                        
-                        #lvar = self.scope.parseLValue(lexpr)
-                        #rvalue = self.scope.parse
-                        #print lexpr + ' = ' + rexpr
-                        #print repr(self.scope.parseLValue(lexpr))
-                        #print repr(self.scope.parseRValue(rexpr))
-                        pass
 
+                        rval = None
+                        plists = reBetweenBrackets.findall(rexpr)
+                        if len(plists) == 1:  # = func(...)
+                            fname = rexpr[:rexpr.find('(', 1)]
+                            if fname[0] == '(':  # failed
+                                self.error(SyntaxError, 'invalid syntax: %s' % (line))
+                                return
+                            rval = self.parseFunc(fname, plists[0], line)
+                        else:  # = r-value
+                            rval = self.scope.parseRValue(rexpr)
+
+                        fvar.value = rval
                     else:  # unsupported syntax
                         self.error(SyntaxError, 'unsupported syntax: %s' % (line))
                         return
 
-                else:  # var / func(g(55))
-                    self.error(SyntaxError, 'unsupported syntax: %s' % (line))
-                    return
+                else:  # var / func(33)
+                    expr = word  # expr
+                    plists = reBetweenBrackets.findall(expr)
+                    if len(plists) == 1:  # func(...)
+                        fname = expr[:expr.find('(', 1)]
+                        if fname[0] == '(':  # failed
+                            self.error(SyntaxError, 'invalid syntax: %s' % (line))
+                            return
+
+                        self.parseFunc(fname, plists[0], line)
+                    else:  # var
+                        self.error(SyntaxError, 'unsupported syntax: %s' % (line))
+                        return
+
+
+    def parseFunc(self, fname, paramstrs, line):
+        if not fname in self.funcions:  # function not defined
+            self.error(NameError, 'function(%s) is not defined: %s' % (fname, line))
+            return None
+
+        fparamlr, func = self.funcions[fname]
+        paramlist = paramstrs.split(',')
+        vals = list()
+        if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
+            paramlist = paramlist[:len(fparamlr)]
+
+        lrlock = None
+        for index, paramstr in enumerate(paramlist):
+            lr = None
+
+            if lrlock == None:
+                lr = fparamlr[index]
+                if lr == '*':
+                    lrlock = fparamlr[index - 1]
+                    lr = lrlock
+            else:
+                lr = lrlock
+
+            val = None
+            if lr == 'L':  # function accept a l-value
+                val = self.scope.parseLValue(paramstr)
+            elif lr == 'R':  # function accept a r-value
+                val = self.scope.parseRValue(paramstr)
+            else:  # unsupported function proto
+                self.error(SyntaxError, 'unsupported function proto(%s): %s' % (fparamlr, line))
+                return None
+
+            if val == None:  # failed
+                self.error(ValueError, 'invalid value: %s' % (line))
+                return None
+
+            vals.append(val)
+        return func(*vals)
+
 
     def error(self, e, msg):
         raise e, msg
+
+
+    @staticmethod
+    def wipeChars(s, chars):
+        lst = list()
+        for c in s:
+            if not c in chars:
+                lst.append(c)
+        return ''.join(lst)
+
+
+    @staticmethod
+    def func_print(*rvals):
+        for rval in rvals:
+            print rval,
+        print
+
+
+    @staticmethod
+    def func_encode(lvar):
+        return lvar.encode()
+
+
+    @staticmethod
+    def func_decode(lvar, rdata):
+        lvar.decode(rdata)
+
+
+    @staticmethod
+    def func_dump(lvar):
+        return lvar.dump()
         
         
 reBetweenBrackets = re.compile(r'\((.*)\)')
-reMyParserParseLine = re.compile(r'\'.*\'|".*"|[+=:]|[\w_.()]+')
+#reMyParserParseLine = re.compile(r'\'.*\'|".*"|[+=:]|[\w_.(),]+')
+reMyParserParseLine = re.compile(r'".*"|[+=:]|[\w_.(),\']+')
 
 p = MyParser()
 scope = p.scope
@@ -500,47 +625,41 @@ p.parseLine(r'BODY(0) = data:string(hdr.len) + crc:string(4)')
 p.parseLine(r'BODY(1) = msg:string(10)')
 p.parseLine(r'PKG = flag:uint8 + hdr:HDR + body:BODY(hdr.result)')
 p.parseLine(r'pkg: PKG')
-p.parseLine(r'pkg.flag = "a\x32sdf"')
-p.parseLine(r'encode(pkg)')
+p.parseLine(r'pkg.flag = 123')
+p.parseLine(r'hdr: HDR')
+p.parseLine(r'hdr.len = 6')
+p.parseLine(r'hdr.result = 0')
+p.parseLine(r'pkg.hdr = hdr')
+p.parseLine(r'pkg.body.data = "what is your name?"')
+p.parseLine(r'pkg.body.crc = "\xAA\xBB\xCC\xDD"')
+p.parseLine(r's:string()')
+#p.parseLine(r's = dump(pkg)')
+p.parseLine(r's = encode(pkg)')
+p.parseLine(r'print(s)')
+p.parseLine(r'pkg2: PKG')
+p.parseLine(r'decode(pkg2,s)')
+p.parseLine(r's = dump(pkg2)')
+p.parseLine(r'print(s, 5454)')
+#p.parseLine(r's = dump(s)')
+#p.parseLine(r'print(s)')
 
+text = '''
+PNG_CHUNK = Length:uint32 + Type:string(4) + Data:PNG_DATA(Type) + CRC:uint32
+PNG_DATA('IHDR') = Width:uint32 + Height:uint32 + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
+PNG_DATA() = data:string(Length)
+PNG = sig:string(8) + chunk1:PNG_CHUNK + chunk2:PNG_CHUNK + chunk3:PNG_CHUNK
+
+png:PNG
+chunk:PNG_CHUNK
 '''
-hdr = scope.defVar('hdr', 'HDR')
-hdr['len'] = 3
-hdr['result'] = 0
-body = scope.defVar('body', 'BODY(hdr.result)')
-body['data'] = 'ABCDEFG'
-body['crc'] = 'FFEEGG'
-print body.encode()
-print body.dump()
+for line in text.splitlines():
+    p.parseLine(line)
 
-hdr = pkg['hdr']
-hdr['len'] = 5
-hdr['result'] = 1
+f = open('test.png', 'rb')
+data = f.read()
+f.close()
 
-body = pkg['body']
-body['msg'] = 'asdf'
-#body['data'] = 'AB'
-#body['crc'] = 'abcd'
+png = scope.getVar('png')
+png.decode(data)
 
-#pkg['body'] = body
-
-
-data = pkg.encode()
-
-pkg2 = scope.defVar('pkg2', 'PKG')
-
-pkg2.decode(data)
-
-data2 = pkg2.encode()
-
-print repr(data2)
-
-print pkg2.calcsize()
-print pkg2.dump()
-
-#scope['BODY(0)'] = Struct(scope, 'data:s(hdr2.datalen)')
-#scope['BODY()'] = Struct(scope, 'err:I, msglen:I, msg:s(msglen)')
-
-#scope['PKT'] = Struct(scope, 'hdr:HDR, hdr2:HDR, body:BODY(hdr.result)')
-
-'''
+print png.dump()
