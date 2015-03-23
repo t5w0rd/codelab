@@ -58,75 +58,40 @@ class Variable:
         return self.type.calcsize(self)
 
 
-    def dump(self, level = 0):
-        return self.type.dump(self)
-
-        def addln(s, ln, level):
-            if len(s) > 0:
-                s += '\n'
-            return s + '    ' * level + ln
-
-        res = str()
-        if self.isStruct():
-            res = addln(res, '\'%s\': {' % (self.name), level)
-            first = True
-            for name in self.type.fseq:
-                fvar = self.value[name]
-                if not fvar == None:
-                    s = fvar.dump(level = level + 1)
-                    if first:
-                        first = False
-                    else:
-                        res += ','
-                    res = addln(res, s, 0)
-            res = addln(res, '}', level)
-        elif self.isArray():
-            res = addln(res, '\'%s\': [' % (self.name), level)
-            first = True
-            for ivar in self.value:
-                if not ivar == None:
-                    s = ivar.dump(level = level + 1)
-                    if first:
-                        first = False
-                    else:
-                        res += ','
-                    res = addln(res, s, 0)
-            res = addln(res, ']', level)
-        else:
-            res = addln(res, '\'%s\': %s' % (self.name, repr(self.value)), level)
-        
-        return res
+    def dump(self, short = True):
+        return self.type.dump(self, short = short)
 
 
-    def todict(self, __d = dict()):
-        '''__d: scope, donot use it'''
+    def todict(self, transform = False, _d = dict()):
+        '''transform: transform value
+        _d: scope, donot use it'''
         val = None
         if self.isStruct():  # struct var
             val = dict()
             for name in self.type.fseq:
                 fvar = self.value[name]
                 if not fvar == None:
-                    fvar.todict(val)
+                    fvar.todict(transform = transform, _d = val)
                 else:
                     val = None
         elif self.isArray():  # array var
             val = list()
             for ivar in self.value:
                 if not ivar == None:
-                    ivar.todict(val)
+                    ivar.todict(transform = transform, _d = val)
                 else:
                     val = None
         else:  # base var
             val = self.value
-            if val != None:
+            if val != None and transform:
                 val = self.type.transform(val)
 
-        if isinstance(__d, dict):
-            __d[self.name] = val
-        elif isinstance(__d, list):
-            __d.append(val)
+        if isinstance(_d, dict):
+            _d[self.name] = val
+        elif isinstance(_d, list):
+            _d.append(val)
         
-        return __d
+        return _d
 
 
 class Type:
@@ -166,7 +131,7 @@ class Type:
         return val
 
 
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
         return ''
 
 
@@ -191,7 +156,7 @@ class Basic(Type):
         return struct.calcsize(self.packfmt)
 
 
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
         res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return res
 
@@ -239,9 +204,12 @@ class String(Basic):
         return val
 
 
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
         packfmt = self.__packfmt(var)
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        val = self.transform(var.value[:int(packfmt[:-1])])
+        if short and len(val) > 24:
+            val = val[:20] + '...'
+        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(val))
         return res
 
 
@@ -309,14 +277,18 @@ class Struct(Type):
         return total
 
 
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
         res = '    ' * level + '%s %s = {' % (self.name, var.name)
+        size = len(res)
         for fname in self.fseq:
             ftype = self.scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
             if fvar != None:
-                res += '\n' + ftype.dump(fvar, level = level + 1)
-        res += '\n' + '    ' * level + '}'
+                res += '\n' + ftype.dump(fvar, short = short, level = level + 1)
+        if len(res) == size:
+            res += '}'
+        else:
+            res += '\n' + '    ' * level + '}'
         return res
 
 
@@ -376,13 +348,23 @@ class Array(Type):
         return total
     
     
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
         res = '    ' * level + '%s %s = [' % (self.name, var.name)
+        size = len(res)
+        count = 0
         for index in range(self.size):
             ivar = var.value[index]
             if ivar != None:
-                res += '\n' + self.itype.dump(ivar, level = level + 1)
-        res += '\n' + '    ' * level + ']'
+                if short:
+                    count += 1
+                    if count > 5:
+                        res += '\n' + '    ' * (level + 1) + '...'
+                        break
+                res += '\n' + self.itype.dump(ivar, short = short, level = level + 1)
+        if len(res) == size:
+            res += ']'
+        else:
+            res += '\n' + '    ' * level + ']'
         return res
 
 
@@ -406,7 +388,32 @@ class IPv4(Type):
         return 4
 
 
-    def dump(self, var, level = 0):
+    def dump(self, var, short = True, level = 0):
+        res = '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        return res
+
+
+class MAC(Type):
+    def __init__(self, scope, defval = '00:00:00:00:00:00'):
+        Type.__init__(self, scope, 'MAC', defval = defval)
+
+
+    def encode(self, var, level = 0):
+        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        return struct.pack('6B', *[int(b, 16) for b in var.value.split(':')])
+
+
+    def decode(self, var, data, level = 0):
+        var.value = ':'.join([hex(b)[2:] for b in struct.unpack_from('6B', data)])
+        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        return self.calcsize(var)
+
+
+    def calcsize(self, var):
+        return 6
+
+
+    def dump(self, var, short = True, level = 0):
         res = '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return res
 
@@ -430,7 +437,8 @@ class Scope(Variable):
             'int16@': Basic(self, 'int16@', '>h', defval = 0),
             'int32@': Basic(self, 'int32@', '>i', defval = 0),
             'int64@': Basic(self, 'int64@', '>q', defval = 0L),
-            'IPv4': IPv4(self, defval = '0.0.0.0')}
+            'IPv4': IPv4(self),
+            'MAC': MAC(self)}
 
 
     def getVar(self, name):
@@ -560,14 +568,14 @@ class MyParser(Parser):
 
     def execLine(self, line):
         words = reMyParserParseLine.findall(MyParser.wipeChars(line, ' \t\n\r', '\'\"'))
-        if len(words) == 0:
+        if len(words) == 0 or words[0] == '#':
             return
 
         #print 'DBG | ' + repr(words)
         while len(words) > 0:
             word = words.pop(0)  # pop first word
             if word in self.keywords:  # keyword
-                self.error(SyntaxError, '')
+                self.error(NameError, 'keyword(%s) is not implemented: ' % (repr(word), line))
                 return
             else:  # not a keyword
                 if len(words) > 0: # normal statement
@@ -622,7 +630,6 @@ class MyParser(Parser):
                         words.pop(0)  # pop =
                         rexpr = words.pop(0)  # pop r-value
 
-                        print '@@@@', lexpr
                         fvar = self.parseLValue(lexpr, self.scope, autoalloc = True, line = line)
                         fvar.value = self.parseRValue(rexpr, self.scope, line = line)
                     else:  # unsupported syntax
@@ -647,15 +654,15 @@ class MyParser(Parser):
     def autoAlloc(self, upvar, name, line = ''):
         if upvar.isStruct():
             vtype = self.parseType(upvar.type.ftypeexpr[name], upvar, line = line)
-        elif lupvar.isArray():
-            vtype = lupvar.type.itype
+        elif upvar.isArray():
+            vtype = upvar.type.itype
         else:
             vtype = None
             self.error(ValueError, 'invalied upvalue(%s): %s' % (upvar.name, line))
             return None
-        var = type.allocVar(name)
+        var = vtype.allocVar(name)
         var.upvalue = upvar
-        upvar.value[lname] = var
+        upvar.value[name] = var
         return var
 
 
@@ -688,18 +695,10 @@ class MyParser(Parser):
 
                 lname = name
                 lupvar = lvar
-                print '@@@', name
                 lvar = lvar.value[name]
 
                 if lvar == None and autoalloc:
-                    if lupvar.isStruct():
-                        ltype = self.parseType(lupvar.type.ftypeexpr[lname], lupvar, line = line)
-                    elif lupvar.isArray():
-                        ltype = lupvar.type.itype
-                    lvar = ltype.allocVar(lname)
-                    lvar.upvalue = lupvar
-                    lupvar.value[lname] = lvar
-
+                    lvar = self.autoAlloc(lupvar, lname, line = line)
 
                 if len(indexexprs) == 1:  # like .l2[r1.r2]
                     index = self.parseRValue(indexexprs[0], varscope, line = line)
@@ -712,14 +711,7 @@ class MyParser(Parser):
                     lvar = lvar.value[index]
 
                     if lvar == None and autoalloc:
-                        if lupvar.isStruct():
-                            ltype = self.parseType(lupvar.type.ftypeexpr[lname], lupvar, line = line)
-                        elif lupvar.isArray():
-                            ltype = lupvar.type.itype
-                        lvar = ltype.allocVar(lname)
-                        lvar.upvalue = lupvar
-                        lupvar.value[lname] = lvar
-
+                        lvar = self.autoAlloc(lupvar, lname, line = line)
 
             if check:
                 return lvar
@@ -947,13 +939,13 @@ reBetweenBrackets = re.compile(r'\((.*)\)')
 reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
 reEval = re.compile(r'${(.*)}')
 #reMyParserParseLine = re.compile(r'\'.*\'|".*"|[+=:]|[\w_.(),]+')
-reMyParserParseLine = re.compile(r'".*"|[+=:]|[\w_(){}\[\]$.\',@]+')
+reMyParserParseLine = re.compile(r'".*"|[+=:#]|[\w_(){}\[\]$.\',@]+')
 
 p = MyParser()
 scope = p.scope
 
 p.execLine(r'HDR = len:uint16 + result:uint8')
-p.execLine(r'BODY(0) = data:string(hdr.len) + ip:IPv4')
+p.execLine(r'BODY(0) = data:string(hdr.len) + ip:IPv4 + mac:MAC')
 p.execLine(r'BODY(1) = msg:string(10)')
 p.execLine(r'PKG = flag:uint8 + hdr:HDR + body:BODY(hdr.result) + resv:uint8[5]')
 p.execLine(r'pkg: PKG')
@@ -964,6 +956,7 @@ p.execLine(r'hdr.result = 0')
 p.execLine(r'pkg.hdr = hdr')
 p.execLine(r'pkg.body.data = "what is your name?"')
 p.execLine(r'pkg.body.ip = "192.168.1.1"')
+p.execLine(r'pkg.body.mac = "aa:bb:cc:ee:ff:11"')
 p.execLine(r'pkg.resv[0] = 2')
 p.execLine(r'print(dump(pkg))')
 #p.execLine(r's = dump(pkg)')
@@ -979,14 +972,14 @@ text = r'''
 PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
 PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
 PNG_DATA() = data:string(Length, 'base64')
-PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[2]
+PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[6]
 
 png:PNG
 chunk:PNG_CHUNK
 
 arr:int32[4]
-arr[2] = 3
-arr[0] = 5
+#arr[2] = 1
+#arr[0] = 5
 print(dump(arr))
 
 arr:string()[3]
@@ -1004,7 +997,8 @@ f.close()
 png = p.getVar('png')
 png.decode(data)
 
-d = png.todict()
+d = png.todict(transform = True)
+print png.dump()
 
 import json
 s = json.dumps(d)
