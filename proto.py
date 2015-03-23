@@ -404,7 +404,7 @@ class MAC(Type):
 
 
     def decode(self, var, data, level = 0):
-        var.value = ':'.join([hex(b)[2:] for b in struct.unpack_from('6B', data)])
+        var.value = ':'.join([b.encode('hex') for b in data[:6]])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return self.calcsize(var)
 
@@ -593,12 +593,25 @@ class MyParser(Parser):
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
 
+                        exprs = reBetweenBrackets.findall(tname)
+                        if len(exprs) == 1:  # func(...)
+                            tname = tname[:tname.find('(', 1)]
+                            if tname[0] == '(':  # failed
+                                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                                return
+
+                            val = self.parseRValue(exprs[0], self.scope, line)
+                            if val != None:  # TYPE(expr)
+                                tname += '(' + repr(val) + ')'
+                            else:  # TYPE()
+                                tname += '()'
+
                         self.scope.defType(tname, proto)
                         #print 'DBG | define type(%s) succ' % (tname)
 
                     elif words[0] == ':':  # var:TYPE
                         vname = word  # var name
-                        words.pop(0)  # pop :'    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+                        words.pop(0)  # pop :
                         if len(words) < 1:  # failed
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
@@ -1009,10 +1022,28 @@ f.close()
 
 text ='''
 ETH_HDR = dst:MAC + src:MAC + type:uint16@
-ETH_BODY() = ARP
-ETH_BODY() = string()
+ETH_BODY(${dpkt.ethernet.ETH_TYPE_ARP}) = arp:ARP
+ETH_BODY() = data:string()
 ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
 
 ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
 
+eth:ETH
 '''
+import socket
+import sys
+import time
+import dpkt
+
+p.execText(text)
+eth = p.getVar('eth')
+
+s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+s.bind(('eth0', dpkt.ethernet.ETH_TYPE_ARP))
+while True:
+    data = s.recvfrom(1024)[0]
+    p.execLine(r'decode(eth, ${data})')
+    #if p.getValue('eth.hdr.type') == dpkt.ethernet.ETH_TYPE_ARP:
+    if eth['hdr']['type'].value == dpkt.ethernet.ETH_TYPE_ARP:
+        print eth.dump()
+s.close()
