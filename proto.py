@@ -1007,3 +1007,12 @@ f = open('res.txt', 'w')
 f.write(s)
 f.close()
 
+text ='''
+ETH_HDR = dst:MAC + src:MAC + type:uint16@
+ETH_BODY() = ARP
+ETH_BODY() = string()
+ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
+
+ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
+
+'''
