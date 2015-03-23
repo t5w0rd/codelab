@@ -473,6 +473,7 @@ class MyParser(Parser):
         self.state = State({'idle'}, 'idle')
         self.keywords = {}
         self.funcions = {
+            'import': ('R*', MyParser.func_import),
             'print': ('R*', MyParser.func_print),
             'encode': ('L', MyParser.func_encode),
             'decode': ('LR', MyParser.func_decode),
@@ -819,6 +820,12 @@ class MyParser(Parser):
 
 
     @staticmethod
+    def func_import(*rmods):
+        for rmod in rmods:
+            exec('import ' + rmod)
+
+    
+    @staticmethod
     def func_print(*rvals):
         for rval in rvals:
             print rval,
@@ -891,6 +898,8 @@ arr[0] = ${hex(18)}
 arr[2] = "gogogo~~!!!"
 print(dump(arr))
 print(encode(arr))
+import('os', 'sys')
+print(${os.path.sep})
 '''
 p.parseText(text)
 
@@ -898,7 +907,7 @@ f = open('test.png', 'rb')
 data = f.read()
 f.close()
 
-png = p.getVar('png')
+png = p.getVar('arr[2]')
 #png.decode(data)
 
-#print png.dump()
+print png.dump()
