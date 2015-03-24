@@ -132,7 +132,8 @@ class Type:
 
 
     def dump(self, var, short = True, level = 0):
-        return ''
+        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        return res
 
 
 class Basic(Type):
@@ -156,22 +157,17 @@ class Basic(Type):
         return struct.calcsize(self.packfmt)
 
 
-    def dump(self, var, short = True, level = 0):
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-        return res
-
-
-class String(Basic):
+class String(Type):
     def __init__(self, scope, size, encoding = None, defval = ''):
         name = 'string('
         packfmt = ''
         if size != None:
             name += str(size)
-            packfmt = str(size) + 's'
         if encoding != None:
             name += ',' + repr(encoding)
         name += ')'
-        Basic.__init__(self, scope, name, packfmt, defval = defval)
+        Type.__init__(self, scope, name, defval = defval)
+        self.size = size
         self.encoding = encoding
 
 
@@ -193,9 +189,9 @@ class String(Basic):
 
 
     def __packfmt(self, var):
-        if self.packfmt == '':
-            return '%ds' % (len(var.value))
-        return self.packfmt
+        if self.size == None:
+            return str(len(var.value)) + 's'
+        return str(self.size) + 's'
 
     
     def transform(self, val):
@@ -211,6 +207,61 @@ class String(Basic):
             val = val[:20] + '...'
         res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(val))
         return res
+
+
+class Bits(Type):
+    class BitsSize:
+        def __init__(self, wide):
+            self.wide = wide
+
+
+    def __init__(self, scope, wide, defval = 0):
+        Type.__init__(self, scope, 'bits(' + str(wide) + ')', defval = defval)
+        self.wide = wide
+
+
+    def encode(self, var, level = 0):
+        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        return Bits.BitsSize(self.wide)
+
+
+    def decode(self, var, data, level = 0):
+        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        return Bits.BitsSize(self.wide)
+
+
+    def calcsize(self, var):
+        return Bits.BitsSize(self.wide)
+
+
+    @staticmethod
+    def encodebits(bitpack):
+        bytelist = list()
+        bytenum = Bits.calcsizebits(len(bitpack))
+        bitpack += '0' * (bytenum * 8)
+        return struct.pack(str(bytenum) + 'B', *[int(bitpack[i * 8:i * 8 + 8], 2) for i in range(bytenum)])
+
+
+    @staticmethod
+    def decodebits(bitpack, data):
+        wide = 0
+        for var in bitpack:
+            wide += var.type.wide
+        bytenum = Bits.calcsizebits(wide)
+        data = data[:bytenum]
+        binpack = [bin(ord(b))[2:] for b in data]
+        binpack = ''.join(['0' * (8 - len(b)) + b for b in binpack])
+        pos = 0
+        for var in bitpack:
+            wide = var.type.wide
+            var.value = int(binpack[pos:pos + wide], 2)
+            pos += wide
+        return bytenum
+
+
+    @staticmethod
+    def calcsizebits(bitpack):
+        return (bitpack + 7) / 8
 
 
 class Struct(Type):
@@ -238,17 +289,35 @@ class Struct(Type):
     def encode(self, var, level = 0):
         #print 'E| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         data = str()
+        bitpack = str()
+        bitflag = False
         for fname in self.fseq:
             ftype = self.scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
             if fvar == None:  # try to use defval
                 fvar = ftype.allocVar(fname)
             res = ftype.encode(fvar, level = level + 1)
-            if res == None:
+            if res == None:  # failed
                 #print 'ERR | encode:' + fname
                 return None
+
+            if isinstance(res, Bits.BitsSize):  # bits
+                if not bitflag:  # begin pack bits
+                    bitflag = True
+                    bitpack = str()
+                #val = (~(0xffffffff << fvar.type.wide)) & 0xffffffff & fvar.value  # ignore out of range bits
+                wide = res.wide
+                s = bin(fvar.value)[2:][-wide:][:wide]
+                s = '0' * (wide - len(s)) + s
+                bitpack += s
             else:
+                if bitflag:  # end pack bits
+                    bitflag = False
+                    data += Bits.encodebits(bitpack)
                 data += res
+        if bitflag:  # end pack bits
+            bitflag = False
+            data += Bits.encodebits(bitpack)
         #print 'E| ' + '    ' * level + '}'
         return data
 
@@ -256,25 +325,58 @@ class Struct(Type):
     def decode(self, var, data, level = 0):
         #print 'D| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         pos = 0
+        bitpack = list()
+        bitflag = False
         for fname in self.fseq:
+            #print '###', self.ftypeexpr[fname]
             ftype = self.scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
             if fvar == None:
                 fvar = ftype.allocVar(fname)
                 fvar.upvalue = var
                 var.value[fname] = fvar
-            pos += ftype.decode(fvar, data[pos:], level = level + 1)
+            res = ftype.decode(fvar, data[pos:], level = level + 1)
+            if isinstance(res, Bits.BitsSize):  # bits
+                if not bitflag:  # begin pack bits var
+                    bitflag = True
+                    bitpack = list()
+                bitpack.append(fvar)
+            else:
+                if bitflag:  # end pack bits var
+                    bitflag = False
+                    pos += Bits.decodebits(bitpack, data[pos:])
+                pos += res
+        if bitflag:  # end pack bits
+            bitflag = False
+            pos += Bits.decodebits(bitpack, data[pos:])
         #print 'D| ' + '    ' * level + '}'
         return pos
 
 
     def calcsize(self, var):
-        total = 0
+        size = 0
+        bitpack = 0
+        bitflag = False
         for fname in self.fseq:
             ftype = self.scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
-            total += ftype.calcsize(fvar)
-        return total
+            if fvar == None:
+                fvar = ftype.allocVar(fname)
+            res = ftype.calcsize(fvar)
+            if isinstance(res, Bits.BitsSize):  # bits
+                if not bitflag:  # begin pack bits
+                    bitflag = True
+                    bitpack = 0
+                bitpack += res.wide
+            else:
+                if bitflag:  # end pack bits
+                    bitflag = False
+                    size += Bits.calcsizebits(bitpack)
+                size += res
+        if bitflag:  # end pack bits
+            bitflag = False
+            size += Bits.calcsizebits(bitpack)
+        return size
 
 
     def dump(self, var, short = True, level = 0):
@@ -381,7 +483,7 @@ class IPv4(Type):
     def decode(self, var, data, level = 0):
         var.value = '.'.join([str(b) for b in struct.unpack_from('4B', data)])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        return self.calcsize(var)
+        return 4
 
 
     def calcsize(self, var):
@@ -406,7 +508,7 @@ class MAC(Type):
     def decode(self, var, data, level = 0):
         var.value = ':'.join([b.encode('hex') for b in data[:6]])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        return self.calcsize(var)
+        return 6
 
 
     def calcsize(self, var):
@@ -416,7 +518,7 @@ class MAC(Type):
     def dump(self, var, short = True, level = 0):
         res = '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return res
-
+        
     
 class Scope(Variable):
     def __init__(self, name, parser):
@@ -438,7 +540,8 @@ class Scope(Variable):
             'int32@': Basic(self, 'int32@', '>i', defval = 0),
             'int64@': Basic(self, 'int64@', '>q', defval = 0L),
             'IPv4': IPv4(self),
-            'MAC': MAC(self)}
+            'MAC': MAC(self)
+        }
 
 
     def getVar(self, name):
@@ -548,26 +651,43 @@ class Parser:
 
 
 class MyParser(Parser):
+    '''MyParser'''
+    
+    reBetweenBrackets = re.compile(r'\((.*)\)')
+    reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
+    reEval = re.compile(r'${(.*)}')
+    reParseLine = re.compile(r'".*"|[+=:#]|[\w_(){}\[\]$.\',@]+')
+
+
     def __init__(self):
         Parser.__init__(self)
         self.state = State({'idle'}, 'idle')
         self.keywords = {}
         self.funcions = {
+            'add': ('RR', lambda x, y: x + y),
+            'sub': ('RR', lambda x, y: x - y),
+            'mul': ('RR', lambda x, y: x * y),
+            'div': ('RR', lambda x, y: x / y),
+            'mod': ('RR', lambda x, y: x % y),
             'print': ('R*', MyParser.func_print),
-            'encode': ('L', MyParser.func_encode),
-            'decode': ('LR', MyParser.func_decode),
-            'dump': ('L', MyParser.func_dump)
+            'encode': ('L', lambda lvar: lvar.encode()),
+            'decode': ('LR', lambda lvar, rdata: lvar.decode(rdata)),
+            'calcsize': ('L', lambda lvar: lvar.calcsize()),
+            'dump': ('L', lambda lvar: lvar.dump())
         }
+        self.pylocals = None
 
 
-    def execText(self, text):
+    def execText(self, text, pylocals = dict()):
         lines = text.splitlines()
         for line in lines:
-            self.execLine(line)
+            self.execLine(line, pylocals = pylocals)
 
 
-    def execLine(self, line):
-        words = reMyParserParseLine.findall(MyParser.wipeChars(line, ' \t\n\r', '\'\"'))
+    def execLine(self, line, pylocals = dict()):
+        self.pylocals = pylocals
+
+        words = MyParser.reParseLine.findall(MyParser.wipeChars(line, ' \t\n\r', '\'\"'))
         if len(words) == 0 or words[0] == '#':
             return
 
@@ -593,7 +713,7 @@ class MyParser(Parser):
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
 
-                        exprs = reBetweenBrackets.findall(tname)
+                        exprs = MyParser.reBetweenBrackets.findall(tname)
                         if len(exprs) == 1:  # func(...)
                             tname = tname[:tname.find('(', 1)]
                             if tname[0] == '(':  # failed
@@ -651,7 +771,7 @@ class MyParser(Parser):
 
                 else:  # var / func(33)
                     expr = word  # expr
-                    plists = reBetweenBrackets.findall(expr)
+                    plists = MyParser.reBetweenBrackets.findall(expr)
                     if len(plists) == 1:  # func(...)
                         fname = expr[:expr.find('(', 1)]
                         if fname[0] == '(':  # failed
@@ -696,7 +816,7 @@ class MyParser(Parser):
                     check = False
                     break
 
-                indexexprs = reBetweenSqrBrackets.findall(name)
+                indexexprs = MyParser.reBetweenSqrBrackets.findall(name)
                 if len(indexexprs) == 1:  # like .l2[r1.r2]
                     name = name[:name.find('[', 1)]
                     if name[0] == '[':  # failed
@@ -740,20 +860,21 @@ class MyParser(Parser):
             return None
 
         # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101 / 'as\ndf' / "ABd\x3fdi\t"
-        val = MyParser.toValue(expr)
+        val = self.toValue(expr)
         if val != None:
             return val
 
         # ${x + 2}
         if expr[:2] == '${' and expr[-1] == '}':
             try:
-                return eval(expr[2:-1])
+                return eval(expr[2:-1], globals(), self.pylocals)
             except Exception, msg:
                 self.error(ValueError, 'eval(%s) failed, %s: %s' % (repr(expr[2:-1]), msg, repr(line)))
                 return None
 
         # func(...)
-        plists = reBetweenBrackets.findall(expr)
+        plists = MyParser.reBetweenBrackets.findall(expr)
+        print '@@@', expr, plists
         if len(plists) == 1:  # = func(...)
             fname = expr[:expr.find('(', 1)]
             if fname[0] == '(':  # failed
@@ -776,7 +897,9 @@ class MyParser(Parser):
             return None
 
         fparamlr, func = self.funcions[fname]
-        paramlist = paramexprs.split(',')
+        #paramlist = paramexprs.split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
+        paramlist = MyParser.splitWithPairs(paramexprs, ',', '()')
+        print '##@@', paramexprs, paramlist
         vals = list()
         if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
             paramlist = paramlist[:len(fparamlr)]
@@ -815,7 +938,7 @@ class MyParser(Parser):
         PKG = hdr:HDR + body:BODY(hdr.result)
         hdr is in pkg, so the varscope is pkg'''
         # vtype[expr] / vtype(expr2)[expr1]
-        exprs = reBetweenSqrBrackets.findall(typeexpr)
+        exprs = MyParser.reBetweenSqrBrackets.findall(typeexpr)
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('[', 1)]
             if vtype[0] == '[':
@@ -832,7 +955,7 @@ class MyParser(Parser):
                 return None
 
         # vtype(expr)
-        exprs = reBetweenBrackets.findall(typeexpr)
+        exprs = MyParser.reBetweenBrackets.findall(typeexpr)
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('(', 1)]
             if vtype[0] == '(':
@@ -840,22 +963,26 @@ class MyParser(Parser):
                 return None
 
             
-            if vtype in ('string'):
-                paramexprs = exprs[0].split(',')
-                val = self.parseRValue(paramexprs[0], varscope, line = line)
-                encoding = None
-                if len(paramexprs) == 2:
-                    encoding = self.parseRValue(paramexprs[1], varscope, line = line)
-                    
-                if not isinstance(val, int) and exprs[0] != '':
-                    self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
-                    return None
-
-                if encoding != None and not isinstance(encoding, str):
-                    self.error(ValueError, 'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
-                    return None
+            if vtype in ('string', 'bits'):
+                #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
+                paramexprs = MyParser.splitWithPairs(exprs[0], ',', '()')
+                vals = [self.parseRValue(paramexpr, varscope, line = line) for paramexpr in paramexprs]
                 
-                return String(self.scope, val, encoding = encoding)
+                if vtype == 'string':
+                    if not isinstance(vals[0], int) and exprs[0] != '':
+                        self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                        return None
+
+                    if len(vals) >= 2 and vals[1] != None and not isinstance(vals[1], str):
+                        self.error(ValueError, 'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
+                        return None
+                    
+                    return String(self.scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)
+                elif vtype == 'bits':
+                    if not isinstance(vals[0], int) and exprs[0] != '':
+                        self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                        return None
+                    return Bits(self.scope, vals[0])
 
             val = self.parseRValue(exprs[0], varscope, line = line)
             if isinstance(val, dict) or isinstance(val, list):  # struct value, or array value
@@ -881,6 +1008,31 @@ class MyParser(Parser):
         return None
 
 
+    def toValue(self, s):
+        # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101
+        base = 10
+        prefix = s[:2]
+        if s.isdigit():
+            if s[0] == '0':
+                base = 8
+            else:
+                base = 10
+        elif prefix == '0x':
+            base = 16
+        elif prefix == '0b':
+            base = 2
+        elif prefix == '0o':
+            base = 8
+        try:
+            return int(s, base)
+        except:
+            # 'adff' / "fapsdf"
+            if (s[0] == '\'' or s[0] == '\"') and s[0] == s[-1]:
+                return eval(s, globals(), self.pylocals)
+
+        return None
+
+
     @staticmethod
     def wipeChars(s, chars, bchars):
         lst = list()
@@ -901,29 +1053,10 @@ class MyParser(Parser):
 
 
     @staticmethod
-    def toValue(s):
-        # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101
-        base = 10
-        prefix = s[:2]
-        if s.isdigit():
-            if s[0] == '0':
-                base = 8
-            else:
-                base = 10
-        elif prefix == '0x':
-            base = 16
-        elif prefix == '0b':
-            base = 2
-        elif prefix == '0o':
-            base = 8
-        try:
-            return int(s, base)
-        except:
-            # 'adff' / "fapsdf"
-            if (s[0] == '\'' or s[0] == '\"') and s[0] == s[-1]:
-                return eval(s)
-
-        return None
+    def splitWithPairs(s, sep = ',', pairs = '{[()]}'):
+        res = list()
+        res = s.split(sep)
+        return res
 
 
     @staticmethod
@@ -931,124 +1064,138 @@ class MyParser(Parser):
         for rval in rvals:
             print rval,
         print
+    
 
+def main():
+    p = MyParser()
+    scope = p.scope
 
-    @staticmethod
-    def func_encode(lvar):
-        return lvar.encode()
-
-
-    @staticmethod
-    def func_decode(lvar, rdata):
-        return lvar.decode(rdata)
-
-
-    @staticmethod
-    def func_dump(lvar):
-        return lvar.dump()
-        
-        
-reBetweenBrackets = re.compile(r'\((.*)\)')
-reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
-reEval = re.compile(r'${(.*)}')
-#reMyParserParseLine = re.compile(r'\'.*\'|".*"|[+=:]|[\w_.(),]+')
-reMyParserParseLine = re.compile(r'".*"|[+=:#]|[\w_(){}\[\]$.\',@]+')
-
-p = MyParser()
-scope = p.scope
-
-p.execLine(r'HDR = len:uint16 + result:uint8')
-p.execLine(r'BODY(0) = data:string(hdr.len) + ip:IPv4 + mac:MAC')
-p.execLine(r'BODY(1) = msg:string(10)')
-p.execLine(r'PKG = flag:uint8 + hdr:HDR + body:BODY(hdr.result) + resv:uint8[5]')
-p.execLine(r'pkg: PKG')
-p.execLine(r'pkg.flag = ${max(123, 222)}')
-p.execLine(r'hdr: HDR')
-p.execLine(r'hdr.len = 6')
-p.execLine(r'hdr.result = 0')
-p.execLine(r'pkg.hdr = hdr')
-p.execLine(r'pkg.body.data = "what is your name?"')
-p.execLine(r'pkg.body.ip = "192.168.1.1"')
-p.execLine(r'pkg.body.mac = "aa:bb:cc:ee:ff:11"')
-p.execLine(r'pkg.resv[0] = 2')
-p.execLine(r'print(dump(pkg))')
+    p.execLine(r'HDR = len:uint16 + result:uint8')
+    p.execLine(r'BODY(0) = data:string(hdr.len) + ip:IPv4 + mac:MAC')
+    p.execLine(r'BODY(1) = msg:string(10)')
+    p.execLine(r'PKG = flag:uint8 + hdr:HDR + body:BODY(hdr.result) + resv:uint8[5]')
+    p.execLine(r'pkg: PKG')
+    p.execLine(r'pkg.flag = ${max(123, 222)}')
+    p.execLine(r'hdr: HDR')
+    p.execLine(r'hdr.len = 6')
+    p.execLine(r'hdr.result = 0')
+    p.execLine(r'pkg.hdr = hdr')
+    p.execLine(r'pkg.body.data = "what is your name?"')
+    p.execLine(r'pkg.body.ip = "192.168.1.1"')
+    p.execLine(r'pkg.body.mac = "aa:bb:cc:ee:ff:11"')
+    p.execLine(r'pkg.resv[0] = 2')
+    p.execLine(r'print(dump(pkg))')
 #p.execLine(r's = dump(pkg)')
-p.execLine(r's:string() = encode(pkg)')
+    p.execLine(r's:string() = encode(pkg)')
 #p.execLine(r'print(s)')
-p.execLine(r'pkg2: PKG')
-p.execLine(r'decode(pkg2,s)')
-p.execLine(r's = dump(pkg2)')
-p.execLine(r'print(s, 5454)')
+    p.execLine(r'pkg2: PKG')
+    p.execLine(r'decode(pkg2,s)')
+    p.execLine(r's = dump(pkg2)')
+    p.execLine(r'print(s, 5454)')
 #p.execLine(r's = dump(s)')
 #p.execLine(r'print(s)')
-text = r'''
-PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
-PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
-PNG_DATA() = data:string(Length, 'base64')
-PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[6]
+    text = r'''
+    PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
+    PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
+    PNG_DATA() = data:string(Length, 'base64')
+    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[6]
 
-png:PNG
-chunk:PNG_CHUNK
+    png:PNG
+    chunk:PNG_CHUNK
 
-arr:int32[4]
+    arr:int32[4]
 #arr[2] = 1
 #arr[0] = 5
-print(dump(arr))
+    print(dump(arr))
 
-arr:string()[3]
-arr[0] = ${hex(18)}
-arr[2] = "gogogo~~!!!"
-print(dump(arr))
-print(encode(arr))
-'''
-p.execText(text)
+    arr:string()[3]
+    arr[0] = ${hex(18)}
+    arr[2] = "gogogo~~!!!"
+    print(dump(arr))
+    print(encode(arr))
+    '''
+    p.execText(text)
 
-f = open('test.png', 'rb')
-data = f.read()
-f.close()
+    f = open('test.png', 'rb')
+    data = f.read()
+    f.close()
 
-png = p.getVar('png')
-png.decode(data)
+    png = p.getVar('png')
+    png.decode(data)
 
-d = png.todict(transform = True)
-print png.dump()
+    d = png.todict(transform = True)
+    print png.dump()
 
-import json
-s = json.dumps(d)
+    import json
+    s = json.dumps(d)
 
-f = open('res.txt', 'w')
-f.write(s)
-f.close()
+    f = open('res.txt', 'w')
+    f.write(s)
+    f.close()
 
-text ='''
-ETH_HDR = dst:MAC + src:MAC + type:uint16@
-ETH_BODY(${dpkt.ethernet.ETH_TYPE_ARP}) = arp:ARP
-ETH_BODY(${dpkt.ethernet.ETH_TYPE_IP}) = ip:IP
-ETH_BODY() = data:string()
-ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
+    import socket
+    import sys
+    import time
+    import dpkt
 
-ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
+    text = r'''
+    ETH_TYPE_ARP:uint16 = ${dpkt.ethernet.ETH_TYPE_ARP}
+    ETH_TYPE_IP:uint16 = ${dpkt.ethernet.ETH_TYPE_IP}
+    
+    ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
+    
+    ETH_HDR = dst:MAC + src:MAC + type:uint16@
+    
+    ETH_BODY(ETH_TYPE_ARP) = arp:ARP
+    ETH_BODY(ETH_TYPE_IP) = ip:IP
+    ETH_BODY() = unknown:string(0)
 
-IP_HDR = verlen:uint8 + diffServ:uint8 + length:uint16@ + flags:uint16@ + fragment:uint16@ + ttl:uint8 + proto:uint8 + sum:uint16@ + srcIp:IPv4 + dst:IPv4 + resv:string()
 
-IP = hdr:IP_HDR + body:string()
+        ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
 
-eth:ETH
-'''
-import socket
-import sys
-import time
-import dpkt
 
-p.execText(text)
-eth = p.getVar('eth')
+        IP_PROTO_TCP:uint8 = ${dpkt.ip.IP_PROTO_TCP}
+        IP_PROTO_UDP:uint8 = ${dpkt.ip.IP_PROTO_UDP}
 
-s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
-s.bind(('lo', dpkt.ethernet.ETH_TYPE_IP))
-while True:
-    data = s.recvfrom(1024)[0]
-    p.execLine(r'decode(eth, ${data})')
-    #if p.getValue('eth.hdr.type') == dpkt.ethernet.ETH_TYPE_ARP:
-    if eth['hdr']['type'].value in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
-        print eth.dump()
-s.close()
+        IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.proto)
+    
+            IP_HDR = ipFixed:IP_HDR_FIXED + ipOpts:IP_HDR_OPTS
+                IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dst:IPv4
+                IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)))
+    
+            IP_BODY(IP_PROTO_TCP) = tcp:TCP
+            IP_BODY(IP_PROTO_UDP) = udp:UDP
+            IP_BODY() = unknown:string(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)))
+
+
+                TCP = tcpHdr:TCP_HDR + tcpBody:TCP_BODY
+
+                    TCP_HDR = tcpFixed:TCP_HDR_FIXED + tcpOpts:TCP_HDR_OPTS
+                        TCP_HDR_FIXED = srcPort:uint16@ + dstPort:uint16@ + seq:uint32@ + ack:uint32@ + tcpHdrLen:bits(4) + resv:bits(6) + urgf:bits(1) + ackf:bits(1) + pshf:bits(1) + rstf:bits(1) + synf:bits(1) + finf:bits(1) + win:uint16@ + checkSum:uint16@ + urgent:uint16@
+                        TCP_HDR_OPTS = options:string(sub(mul(tcpFixed.tcpHdrLen, 4), calcsize(tcpFixed)))
+
+                    TCP_BODY = data:string(sub(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), calcsize(tcpHdr)))
+
+    eth:ETH
+
+    '''
+    p.execText(text, locals())
+    eth = p.getVar('eth')
+
+    ifname = len(sys.argv) > 1 and sys.argv[1]
+
+    s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+    if ifname:
+        s.bind((ifname, dpkt.ethernet.ETH_TYPE_IP))
+
+    while True:
+        data = s.recvfrom(1024)[0]
+        p.execLine(r'decode(eth, ${data})', locals())
+        if eth['hdr']['type'].value in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
+            print eth.dump()
+    s.close()
+
+
+if __name__ == '__main__':
+    main()
+
