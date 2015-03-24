@@ -62,7 +62,7 @@ class Variable:
         return self.type.dump(self, short = short)
 
 
-    def todict(self, transform = False, _d = dict()):
+    def todict(self, transform = False, _d = None):
         '''transform: transform value
         _d: scope, donot use it'''
         val = None
@@ -86,6 +86,9 @@ class Variable:
             if val != None and transform:
                 val = self.type.transform(val)
 
+        if _d == None:
+            _d = dict()
+
         if isinstance(_d, dict):
             _d[self.name] = val
         elif isinstance(_d, list):
@@ -99,6 +102,7 @@ class Type:
         self.scope = scope
         self.name = name
         self.defval = defval
+        #print 'D|newType(%s)' % (name)
 
 
     def allocVar(self, name):
@@ -111,7 +115,7 @@ class Type:
         else:  # failed
             return None
 
-        #print 'DBG | alloc var(%s:%s)' % (name, self.name)
+        #print 'D|alloc var(%s:%s)' % (name, self.name)
         return Variable(self, name, value = self.defval)
 
 
@@ -330,11 +334,10 @@ class Struct(Type):
         for fname in self.fseq:
             #print '###', self.ftypeexpr[fname]
             ftype = self.scope.getType(self.ftypeexpr[fname], var)
-            fvar = var.value[fname]
-            if fvar == None:
-                fvar = ftype.allocVar(fname)
-                fvar.upvalue = var
-                var.value[fname] = fvar
+            #print '@@', var.name, var.value, fname, ftype.name
+            fvar = ftype.allocVar(fname)
+            fvar.upvalue = var
+            var.value[fname] = fvar
             res = ftype.decode(fvar, data[pos:], level = level + 1)
             if isinstance(res, Bits.BitsSize):  # bits
                 if not bitflag:  # begin pack bits var
@@ -432,11 +435,9 @@ class Array(Type):
         #print 'D| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
         pos = 0
         for index in range(self.size):
-            ivar = var.value[index]
-            if ivar == None:
-                ivar = self.itype.allocVar(index)
-                ivar.upvalue = var
-                var.value[index] = ivar
+            ivar = self.itype.allocVar(index)
+            ivar.upvalue = var
+            var.value[index] = ivar
             pos += self.itype.decode(ivar, data[pos:], level = level + 1)
         #print 'D| ' + '    ' * level + ']'
         return pos
@@ -657,6 +658,7 @@ class MyParser(Parser):
     reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
     reEval = re.compile(r'${(.*)}')
     reParseLine = re.compile(r'".*"|[+=:#]|[\w_(){}\[\]$.\',@]+')
+    spSplitFuncParams = {'()': 2, '[]': 1, '""': 4, "''": 4}
 
 
     def __init__(self):
@@ -678,20 +680,20 @@ class MyParser(Parser):
         self.pylocals = None
 
 
-    def execText(self, text, pylocals = dict()):
+    def execText(self, text, pylocals = None):
         lines = text.splitlines()
         for line in lines:
             self.execLine(line, pylocals = pylocals)
 
 
-    def execLine(self, line, pylocals = dict()):
+    def execLine(self, line, pylocals = None):
         self.pylocals = pylocals
 
         words = MyParser.reParseLine.findall(MyParser.wipeChars(line, ' \t\n\r', '\'\"'))
         if len(words) == 0 or words[0] == '#':
             return
 
-        #print 'DBG | ' + repr(words)
+        #print 'D|' + repr(words)
         while len(words) > 0:
             word = words.pop(0)  # pop first word
             if word in self.keywords:  # keyword
@@ -727,7 +729,7 @@ class MyParser(Parser):
                                 tname += '()'
 
                         self.scope.defType(tname, proto)
-                        #print 'DBG | define type(%s) succ' % (tname)
+                        #print 'D|define type(%s) succ' % (tname)
 
                     elif words[0] == ':':  # var:TYPE
                         vname = word  # var name
@@ -750,7 +752,7 @@ class MyParser(Parser):
                             words.pop(0)  # pop =
                             rexpr = words.pop(0)  # pop r-value
                             var.value = self.parseRValue(rexpr, self.scope, line = line)
-                        #print 'DBG | define var(%s:%s) succ' % (vname, var.type.name)
+                        #print 'D|define var(%s:%s) succ' % (vname, var.type.name)
                             
                     elif words[0] == '=': # var = value
                         # hdr.len = 5
@@ -778,7 +780,7 @@ class MyParser(Parser):
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
 
-                        self.parseFunc(fname, plists[0], line = line)
+                        self.parseFunc(fname, plists[0], self.scope, line = line)
                     else:  # var
                         self.error(SyntaxError, 'unsupported syntax: %s' % (repr(line)))
                         return
@@ -874,13 +876,12 @@ class MyParser(Parser):
 
         # func(...)
         plists = MyParser.reBetweenBrackets.findall(expr)
-        print '@@@', expr, plists
         if len(plists) == 1:  # = func(...)
             fname = expr[:expr.find('(', 1)]
             if fname[0] == '(':  # failed
                 self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                 return
-            return self.parseFunc(fname, plists[0], line = line)
+            return self.parseFunc(fname, plists[0], varscope, line = line)
 
         # datalen / hdr2.data.len
         lvar = self.parseLValue(expr, varscope, line = line)
@@ -891,15 +892,15 @@ class MyParser(Parser):
         return None
 
 
-    def parseFunc(self, fname, paramexprs, line = ''):
+    def parseFunc(self, fname, paramexprs, varscope, line = ''):
         if not fname in self.funcions:  # function not defined
             self.error(NameError, 'function(%s) is not defined: %s' % (repr(fname), repr(line)))
             return None
 
         fparamlr, func = self.funcions[fname]
         #paramlist = paramexprs.split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
-        paramlist = MyParser.splitWithPairs(paramexprs, ',', '()')
-        print '##@@', paramexprs, paramlist
+        paramlist = MyParser.splitWithPairs(paramexprs, ',', MyParser.spSplitFuncParams)
+        #print 'D|parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
         vals = list()
         if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
             paramlist = paramlist[:len(fparamlr)]
@@ -918,9 +919,9 @@ class MyParser(Parser):
 
             val = None
             if lr == 'L':  # function accept a l-value
-                val = self.parseLValue(paramexpr, self.scope, line = line)
+                val = self.parseLValue(paramexpr, varscope, line = line)
             elif lr == 'R':  # function accept a r-value
-                val = self.parseRValue(paramexpr, self.scope, line = line)
+                val = self.parseRValue(paramexpr, varscope, line = line)
             else:  # unsupported function proto
                 self.error(SyntaxError, 'unsupported function proto(%s): %s' % (repr(fparamlr), repr(line)))
                 return None
@@ -930,6 +931,8 @@ class MyParser(Parser):
                 return None
 
             vals.append(val)
+
+            #print 'D|parseFunc(%s)|succ' % (fname)
         return func(*vals)
 
 
@@ -965,7 +968,7 @@ class MyParser(Parser):
             
             if vtype in ('string', 'bits'):
                 #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
-                paramexprs = MyParser.splitWithPairs(exprs[0], ',', '()')
+                paramexprs = MyParser.splitWithPairs(exprs[0], ',', MyParser.spSplitFuncParams)
                 vals = [self.parseRValue(paramexpr, varscope, line = line) for paramexpr in paramexprs]
                 
                 if vtype == 'string':
@@ -1053,9 +1056,32 @@ class MyParser(Parser):
 
 
     @staticmethod
-    def splitWithPairs(s, sep = ',', pairs = '{[()]}'):
+    def splitWithPairs(s, seps, pairDict):
+        '''s: string
+        seps: ',' or ',;'
+        pairDict: {'()': 2, '[]': 1, '""': 4, "''": 4}
+
+        '''
+        # '(x, y), (z, "(dd", aa)'
+        push = {pair[0]: (pair[1], level) for pair, level in pairDict.iteritems()}
+        pop = {pair[1]: pair[0] for pair in pairDict.iterkeys()}
+        
         res = list()
-        res = s.split(sep)
+        stack = list()
+        start = 0
+        end = 0
+        for c in s:
+            empty = (len(stack) == 0)
+            if empty and (c in seps):
+                res.append(s[start: end])
+                start = end + 1
+            elif (c in pop) and (not empty) and (c == push[stack[-1]][0]):
+                stack.pop()
+            elif (c in push) and (empty or (push[c][1] >= push[stack[-1]][1])):
+                stack.append(c)
+            end += 1
+
+        res.append(s[start: end])
         return res
 
 
@@ -1098,7 +1124,7 @@ def main():
     PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
     PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
     PNG_DATA() = data:string(Length, 'base64')
-    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[6]
+    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[1]
 
     png:PNG
     chunk:PNG_CHUNK
@@ -1142,7 +1168,7 @@ def main():
     ETH_TYPE_ARP:uint16 = ${dpkt.ethernet.ETH_TYPE_ARP}
     ETH_TYPE_IP:uint16 = ${dpkt.ethernet.ETH_TYPE_IP}
     
-    ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
+    ETH = ethHdr:ETH_HDR + ethBody:ETH_BODY(ethHdr.type)
     
     ETH_HDR = dst:MAC + src:MAC + type:uint16@
     
@@ -1157,28 +1183,36 @@ def main():
         IP_PROTO_TCP:uint8 = ${dpkt.ip.IP_PROTO_TCP}
         IP_PROTO_UDP:uint8 = ${dpkt.ip.IP_PROTO_UDP}
 
-        IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.proto)
+        IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.ipFixed.proto)
     
             IP_HDR = ipFixed:IP_HDR_FIXED + ipOpts:IP_HDR_OPTS
                 IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dst:IPv4
-                IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)))
+                IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)), 'hex')
     
             IP_BODY(IP_PROTO_TCP) = tcp:TCP
             IP_BODY(IP_PROTO_UDP) = udp:UDP
-            IP_BODY() = unknown:string(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)))
+            IP_BODY() = unknown:string(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), 'hex')
 
 
                 TCP = tcpHdr:TCP_HDR + tcpBody:TCP_BODY
 
                     TCP_HDR = tcpFixed:TCP_HDR_FIXED + tcpOpts:TCP_HDR_OPTS
                         TCP_HDR_FIXED = srcPort:uint16@ + dstPort:uint16@ + seq:uint32@ + ack:uint32@ + tcpHdrLen:bits(4) + resv:bits(6) + urgf:bits(1) + ackf:bits(1) + pshf:bits(1) + rstf:bits(1) + synf:bits(1) + finf:bits(1) + win:uint16@ + checkSum:uint16@ + urgent:uint16@
-                        TCP_HDR_OPTS = options:string(sub(mul(tcpFixed.tcpHdrLen, 4), calcsize(tcpFixed)))
+                        TCP_HDR_OPTS = options:string(sub(mul(tcpFixed.tcpHdrLen, 4), calcsize(tcpFixed)), 'hex')
 
-                    TCP_BODY = data:string(sub(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), calcsize(tcpHdr)))
+                    TCP_BODY = data:string(sub(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), calcsize(tcpHdr)), 'hex')
+
+
+                UDP = udpHdr:UDP_HDR + udpBody:UDP_BODY
+
+                    UDP_HDR = srcPort:uint16@ + dstPort:uint16@ + udpLength:uint16@ + checksum:uint16@
+
+                    UDP_BODY = data:string(sub(udpHdr.udpLength, calcsize(udpHdr)), 'hex')
+
 
     eth:ETH
-
     '''
+
     p.execText(text, locals())
     eth = p.getVar('eth')
 
@@ -1188,11 +1222,20 @@ def main():
     if ifname:
         s.bind((ifname, dpkt.ethernet.ETH_TYPE_IP))
 
-    while True:
-        data = s.recvfrom(1024)[0]
-        p.execLine(r'decode(eth, ${data})', locals())
-        if eth['hdr']['type'].value in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
-            print eth.dump()
+    f = open('res2.txt', 'w')
+    try:
+        while True:
+            data, addr = s.recvfrom(65535)
+            #p.execLine(r'decode(eth, ${data})', locals())
+            eth.decode(data)
+            if eth['ethHdr']['type'].value in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
+                #ss = json.dumps(eth.todict(transform = True))
+                #f.write(ss)
+                print eth.dump()
+    except Exception, msg:
+        print msg
+
+    f.close()
     s.close()
 
 
