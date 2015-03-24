@@ -1023,10 +1023,15 @@ f.close()
 text ='''
 ETH_HDR = dst:MAC + src:MAC + type:uint16@
 ETH_BODY(${dpkt.ethernet.ETH_TYPE_ARP}) = arp:ARP
+ETH_BODY(${dpkt.ethernet.ETH_TYPE_IP}) = ip:IP
 ETH_BODY() = data:string()
 ETH = hdr:ETH_HDR + body:ETH_BODY(hdr.type)
 
 ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
+
+IP_HDR = verlen:uint8 + diffServ:uint8 + length:uint16@ + flags:uint16@ + fragment:uint16@ + ttl:uint8 + proto:uint8 + sum:uint16@ + srcIp:IPv4 + dst:IPv4 + resv:string()
+
+IP = hdr:IP_HDR + body:string()
 
 eth:ETH
 '''
@@ -1039,11 +1044,11 @@ p.execText(text)
 eth = p.getVar('eth')
 
 s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
-s.bind(('eth0', dpkt.ethernet.ETH_TYPE_ARP))
+s.bind(('lo', dpkt.ethernet.ETH_TYPE_IP))
 while True:
     data = s.recvfrom(1024)[0]
     p.execLine(r'decode(eth, ${data})')
     #if p.getValue('eth.hdr.type') == dpkt.ethernet.ETH_TYPE_ARP:
-    if eth['hdr']['type'].value == dpkt.ethernet.ETH_TYPE_ARP:
+    if eth['hdr']['type'].value in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
         print eth.dump()
 s.close()
