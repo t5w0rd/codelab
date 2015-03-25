@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+#
+#  proto - Encode or decode data by proto expression.
+#  Created by 5w0rd 2015.
+#  Email: lightning_0721@163.com
+#
+#
 
 import struct
 import re
@@ -651,8 +657,8 @@ class Parser:
         pass
 
 
-class MyParser(Parser):
-    '''MyParser'''
+class EqParser(Parser):
+    '''EqParser'''
     
     reBetweenBrackets = re.compile(r'\((.*)\)')
     reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
@@ -671,7 +677,7 @@ class MyParser(Parser):
             'mul': ('RR', lambda x, y: x * y),
             'div': ('RR', lambda x, y: x / y),
             'mod': ('RR', lambda x, y: x % y),
-            'print': ('R*', MyParser.func_print),
+            'print': ('R*', EqParser.func_print),
             'encode': ('L', lambda lvar: lvar.encode()),
             'decode': ('LR', lambda lvar, rdata: lvar.decode(rdata)),
             'calcsize': ('L', lambda lvar: lvar.calcsize()),
@@ -689,7 +695,7 @@ class MyParser(Parser):
     def execLine(self, line, pylocals = None):
         self.pylocals = pylocals
 
-        words = MyParser.reParseLine.findall(MyParser.wipeChars(line, ' \t\n\r', '\'\"'))
+        words = EqParser.reParseLine.findall(EqParser.wipeChars(line, ' \t\n\r', '\'\"'))
         if len(words) == 0 or words[0] == '#':
             return
 
@@ -715,7 +721,7 @@ class MyParser(Parser):
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
 
-                        exprs = MyParser.reBetweenBrackets.findall(tname)
+                        exprs = EqParser.reBetweenBrackets.findall(tname)
                         if len(exprs) == 1:  # func(...)
                             tname = tname[:tname.find('(', 1)]
                             if tname[0] == '(':  # failed
@@ -773,7 +779,7 @@ class MyParser(Parser):
 
                 else:  # var / func(33)
                     expr = word  # expr
-                    plists = MyParser.reBetweenBrackets.findall(expr)
+                    plists = EqParser.reBetweenBrackets.findall(expr)
                     if len(plists) == 1:  # func(...)
                         fname = expr[:expr.find('(', 1)]
                         if fname[0] == '(':  # failed
@@ -818,7 +824,7 @@ class MyParser(Parser):
                     check = False
                     break
 
-                indexexprs = MyParser.reBetweenSqrBrackets.findall(name)
+                indexexprs = EqParser.reBetweenSqrBrackets.findall(name)
                 if len(indexexprs) == 1:  # like .l2[r1.r2]
                     name = name[:name.find('[', 1)]
                     if name[0] == '[':  # failed
@@ -875,7 +881,7 @@ class MyParser(Parser):
                 return None
 
         # func(...)
-        plists = MyParser.reBetweenBrackets.findall(expr)
+        plists = EqParser.reBetweenBrackets.findall(expr)
         if len(plists) == 1:  # = func(...)
             fname = expr[:expr.find('(', 1)]
             if fname[0] == '(':  # failed
@@ -899,7 +905,7 @@ class MyParser(Parser):
 
         fparamlr, func = self.funcions[fname]
         #paramlist = paramexprs.split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
-        paramlist = MyParser.splitWithPairs(paramexprs, ',', MyParser.spSplitFuncParams)
+        paramlist = EqParser.splitWithPairs(paramexprs, ',', EqParser.spSplitFuncParams)
         #print 'D|parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
         vals = list()
         if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
@@ -941,7 +947,7 @@ class MyParser(Parser):
         PKG = hdr:HDR + body:BODY(hdr.result)
         hdr is in pkg, so the varscope is pkg'''
         # vtype[expr] / vtype(expr2)[expr1]
-        exprs = MyParser.reBetweenSqrBrackets.findall(typeexpr)
+        exprs = EqParser.reBetweenSqrBrackets.findall(typeexpr)
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('[', 1)]
             if vtype[0] == '[':
@@ -958,7 +964,7 @@ class MyParser(Parser):
                 return None
 
         # vtype(expr)
-        exprs = MyParser.reBetweenBrackets.findall(typeexpr)
+        exprs = EqParser.reBetweenBrackets.findall(typeexpr)
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('(', 1)]
             if vtype[0] == '(':
@@ -968,7 +974,7 @@ class MyParser(Parser):
             
             if vtype in ('string', 'bits'):
                 #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
-                paramexprs = MyParser.splitWithPairs(exprs[0], ',', MyParser.spSplitFuncParams)
+                paramexprs = EqParser.splitWithPairs(exprs[0], ',', EqParser.spSplitFuncParams)
                 vals = [self.parseRValue(paramexpr, varscope, line = line) for paramexpr in paramexprs]
                 
                 if vtype == 'string':
@@ -1093,7 +1099,7 @@ class MyParser(Parser):
     
 
 def main():
-    p = MyParser()
+    p = EqParser()
     scope = p.scope
 
     p.execLine(r'HDR = len:uint16 + result:uint8')
