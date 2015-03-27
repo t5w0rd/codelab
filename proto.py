@@ -1248,54 +1248,65 @@ def main():
     '''
 
     
+    def getData():
+        useSock = 'AF_PACKET' in dir(socket)
+        data = None
+        if useSock:
+            fp = open('eth.cap', 'wb')
+            sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
+            ifname = len(sys.argv) > 1 and sys.argv[1]
+            if ifname:
+                sock.bind((ifname, 0))
+            try:
+                while True:
+                    data, addr = sock.recvfrom(0xFFFF)
+                    #proto, = struct.unpack('>H', data[12:14])
+                    fp.write(struct.pack('I', len(data)))
+                    fp.write(data)
+                    yield data
+            except KeyboardInterrupt, msg:
+                print 'KeyboardInterrupt', msg
+
+            fp.close()
+            sock.close()
+        else:
+            fp = open('eth.cap', 'rb')
+            try:
+                while True:
+                    data = fp.read(4)
+                    if data == '':
+                        data = None
+                        break
+                    data = fp.read(struct.unpack('I', data)[0])
+                    if data == '':
+                        data = None
+                        break
+                    yield data
+            except KeyboardInterrupt, msg:
+                print 'KeyboardInterrupt', msg
+
+            fp.close()
+
+        yield data
     
-    if 'AF_PACKET' in dir(socket):
-        ifname = len(sys.argv) > 1 and sys.argv[1]
-        s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
-        if ifname:
-            s.bind((ifname, 0))
-        f = open('eth.cap', 'wb')
-        try:
-            while True:
-                data, addr = s.recvfrom(0xFFFF)
-                proto, = struct.unpack('>H', data[12:14])
-                if proto != dpkt.ethernet.ETH_TYPE_IP:
-                    print 'ethHdr.type: ' + hex(proto)
-                f.write(struct.pack('I', len(data)))
-                f.write(data)
-        except KeyboardInterrupt, msg:
-            print msg
-        s.close()
-        f.close()
 
-    else:
-        devinfos = dict()
+    p.execute(text, pylocals = locals())
+    eth = p.getVar('eth')
 
-        p.execute(text, locals())
-        eth = p.getVar('eth')
-        f = open('eth.cap', 'rb')
-        try:
-            while True:
-                data = f.read(4)
-                if data == '':
-                    break
-                data = f.read(struct.unpack('I', data)[0])
-                if data == '':
-                    break
-                eth.decode(data)
-                proto = eth['ethHdr']['type'].value
-                if True or proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
-                    #print eth.dump()
-                    if proto == dpkt.ethernet.ETH_TYPE_ARP:
-                        srcIp = eth['ethBody']['arp']['srcIp']
-                        if not srcIp in devinfos:
-                            devinfos[srcIp] = {'mac': eth['ethBody']['arp']['srcMac']}
-                            print srcIp
+    devinfos = dict()
+    for data in getData():
+        if data == None:
+            break
 
-        except KeyboardInterrupt, msg:
-            print msg
-
-        f.close()
+        eth.decode(data)
+        proto = eth['ethHdr']['type'].value
+        if True or proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
+            print eth.dump()
+            if proto == dpkt.ethernet.ETH_TYPE_ARP:
+                srcIp = eth['ethBody']['arp']['srcIp']
+                if not srcIp in devinfos:
+                    devinfos[srcIp] = {'mac': eth['ethBody']['arp']['srcMac']}
+                    print srcIp
 
 
 if __name__ == '__main__':
