@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
 
 git pull
-chown -R thunderliu:thunderliu .
+chown -R 5w0rd:5w0rd .
 
