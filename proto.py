@@ -1261,8 +1261,8 @@ def main():
                 while True:
                     data, addr = sock.recvfrom(0xFFFF)
                     #proto, = struct.unpack('>H', data[12:14])
-                    fp.write(struct.pack('I', len(data)))
-                    fp.write(data)
+                    #fp.write(struct.pack('I', len(data)))
+                    #fp.write(data)
                     yield data
             except KeyboardInterrupt, msg:
                 print 'KeyboardInterrupt', msg
@@ -1300,13 +1300,17 @@ def main():
 
         eth.decode(data)
         proto = eth['ethHdr']['type'].value
+        #if proto != dpkt.ethernet.ETH_TYPE_IP:
+            #print hex(proto)
         if True or proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
-            print eth.dump()
+            #print eth.dump()
             if proto == dpkt.ethernet.ETH_TYPE_ARP:
                 srcIp = eth['ethBody']['arp']['srcIp']
+                print eth.dump()
                 if not srcIp in devinfos:
                     devinfos[srcIp] = {'mac': eth['ethBody']['arp']['srcMac']}
-                    print srcIp
+                    #print eth.dump()
+                    #print srcIp
 
 
 if __name__ == '__main__':
