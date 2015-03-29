@@ -1,0 +1,43 @@
+ETH_TYPE_ARP:uint16 = ${dpkt.ethernet.ETH_TYPE_ARP}
+    ETH_TYPE_IP:uint16 = ${dpkt.ethernet.ETH_TYPE_IP}
+    
+    ETH = ethHdr:ETH_HDR + ethBody:ETH_BODY(ethHdr.type)
+    
+    ETH_HDR = dst:MAC + src:MAC + type:uint16@
+    
+    ETH_BODY(ETH_TYPE_ARP) = arp:ARP
+    ETH_BODY(ETH_TYPE_IP) = ip:IP
+    ETH_BODY() = unknown:string(sub(__size(), calcsize(ethHdr)), 'hex')
+
+
+        ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
+
+
+        IP_PROTO_TCP:uint8 = ${dpkt.ip.IP_PROTO_TCP}
+        IP_PROTO_UDP:uint8 = ${dpkt.ip.IP_PROTO_UDP}
+
+        IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.ipFixed.proto)
+    
+            IP_HDR = ipFixed:IP_HDR_FIXED + ipOpts:IP_HDR_OPTS
+                IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dstIp:IPv4
+                IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)), 'hex')
+    
+            IP_BODY(IP_PROTO_TCP) = tcp:TCP
+            IP_BODY(IP_PROTO_UDP) = udp:UDP
+            IP_BODY() = unknown:string(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), 'hex')
+
+
+                TCP = tcpHdr:TCP_HDR + tcpBody:TCP_BODY
+
+                    TCP_HDR = tcpFixed:TCP_HDR_FIXED + tcpOpts:TCP_HDR_OPTS
+                        TCP_HDR_FIXED = srcPort:uint16@ + dstPort:uint16@ + seq:uint32@ + ack:uint32@ + tcpHdrLen:bits(4) + resv:bits(6) + urgf:bits(1) + ackf:bits(1) + pshf:bits(1) + rstf:bits(1) + synf:bits(1) + finf:bits(1) + win:uint16@ + checkSum:uint16@ + urgent:uint16@
+                        TCP_HDR_OPTS = options:string(sub(mul(tcpFixed.tcpHdrLen, 4), calcsize(tcpFixed)), 'hex')
+
+                    TCP_BODY = data:string(sub(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), calcsize(tcpHdr)), 'hex')
+
+
+                UDP = udpHdr:UDP_HDR + udpBody:UDP_BODY
+
+                    UDP_HDR = srcPort:uint16@ + dstPort:uint16@ + udpLength:uint16@ + checksum:uint16@
+
+                    UDP_BODY = data:string(sub(udpHdr.udpLength, calcsize(udpHdr)), 'hex')

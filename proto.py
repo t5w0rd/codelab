@@ -26,8 +26,8 @@ class Variable:
     def __setitem__(self, k, value):
         '''var[k] = value'''
         self.value[k].value = value
-        
 
+    
     def isStruct(self):
         return isinstance(self.value, dict)
 
@@ -400,7 +400,8 @@ class Struct(Type):
         for fname in self.fseq:
             fvar = var.value[fname]
             if fvar != None:
-                res += '\n' + fvar.type.dumpstr(fvar, short = short, level = level + 1)
+                ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                res += '\n' + ftype.dumpstr(fvar, short = short, level = level + 1)
         if len(res) == size:
             res += '}'
         else:
@@ -410,10 +411,11 @@ class Struct(Type):
     
     def dumpdict(self, var, data = None, transform = False):
         val = dict()
-        for name in self.fseq:
-            fvar = var.value[name]
+        for fname in self.fseq:
+            fvar = var.value[fname]
             if not fvar == None:
-                fvar.type.dumpdict(fvar, data = val, transform = transform)
+                ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                ftype.dumpdict(fvar, data = val, transform = transform)
             else:
                 val = None
         return self.dumpdictset(data, var.name, val)
@@ -591,8 +593,13 @@ class Scope(Variable):
         #    return None
 
 
-    def getValue(self, expr, varscope):
-        return self.parser.parseRValue(expr, varscope, 'Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #def getValue(self, expr, varscope):
+    #    return self.parser.parseRValue(expr, varscope, line = 'Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+
+
+    #def setValue(self, expr, varscope, value):
+    #    var = self.parser.parseLValue(expr, varscope, autoalloc = True, line = 'Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #    var.value = value
 
 
     def defType(self, name, proto):
@@ -664,7 +671,13 @@ class Parser:
 
     def getValue(self, expr):
         '''return the value of Variable instance as r-value, expr: x or xx.yy.zz'''
-        return self.parseRValue(expr, self.scope, 'Parser.getRValue(self, %s)' % (repr(expr)))
+        return self.parseRValue(expr, self.scope, 'Parser.getValue(self, %s)' % (repr(expr)))
+
+
+    def setValue(self, expr, value):
+    	'''set l-value = value'''
+        var = self.parseLValue(expr, self.scope, autoalloc = True, line = 'Parser.setValue(self, %s, %s)' % (repr(expr), repr(value)))
+        var.value = value
 
 
     def error(self, e, msg):
@@ -778,7 +791,7 @@ class EqParser(Parser):
                         vtypeexpr = words.pop(0)  # pop type name
                         var = self.scope.defVar(vname, vtypeexpr)
                         if var == None:  # failed
-                            self.error(NameError, 'type(%s) is not defined or cannot be parsed: %s' % (repr(vtypeexpr), repr(line)))
+                            self.error(NameError, 'type(%s) is not defined or cannot be parsed or invalid var\'s name(%s): %s' % (repr(vtypeexpr), repr(vname), repr(line)))
                             return
 
                         if len(words) > 0:  # var:TYPE = r-value
@@ -857,14 +870,16 @@ class EqParser(Parser):
     
 
     def setCacheVal(self, expr, varscope, val):
-        assert(self.valcache != None)
+        if self.valcache == None:
+            return val
         key = str(id(varscope)) + '.' + expr
         self.valcache[key] = val
         return val
 
 
     def getCacheVal(self, expr, varscope):
-        assert(self.valcache != None)
+        if self.valcache == None:
+            return None
         key = str(id(varscope)) + '.' + expr
         if not key in self.valcache:
             return None
@@ -923,6 +938,7 @@ class EqParser(Parser):
 
             svar = svar.upvalue
 
+        self.error(NameError, 'l-value(%s) cannot be parsed: %s' % (repr(expr), repr(line)))
         return None
 
 
@@ -959,7 +975,7 @@ class EqParser(Parser):
             return self.setCacheVal(expr, varscope, self.parseFunc(fname, plists[0], varscope, line = line))
 
         # datalen / hdr2.data.len
-        lvar = self.parseLValue(expr, varscope, line = line)
+        lvar = self.parseLValue(expr, varscope, autoalloc = True, line = line)
         if lvar != None:
             return self.setCacheVal(expr, varscope, lvar.value)  # return r-value
 
@@ -1220,7 +1236,7 @@ def main():
         IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.ipFixed.proto)
     
             IP_HDR = ipFixed:IP_HDR_FIXED + ipOpts:IP_HDR_OPTS
-                IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dst:IPv4
+                IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dstIp:IPv4
                 IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)), 'hex')
     
             IP_BODY(IP_PROTO_TCP) = tcp:TCP
@@ -1293,25 +1309,35 @@ def main():
     p.execute(text, pylocals = locals())
     eth = p.getVar('eth')
 
+    fp = open('rec.txt', 'w')
     devinfos = dict()
     for data in getData():
         if data == None:
             break
 
         eth.decode(data)
-        proto = eth['ethHdr']['type'].value
+        proto = p.getValue('eth.ethHdr.type')
         #if proto != dpkt.ethernet.ETH_TYPE_IP:
             #print hex(proto)
         if True or proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
             #print eth.dump()
             if proto == dpkt.ethernet.ETH_TYPE_ARP:
-                srcIp = eth['ethBody']['arp']['srcIp']
-                print eth.dump()
+                srcIp = p.getValue('eth.ethBody.arp.srcIp')
+                #print eth.dump(), len(data)
                 if not srcIp in devinfos:
-                    devinfos[srcIp] = {'mac': eth['ethBody']['arp']['srcMac']}
+                    devinfos[srcIp] = {'mac': p.getValue('eth.ethBody.arp.srcMac')}
                     #print eth.dump()
-                    #print srcIp
-
+                    print 'new|%s' % (srcIp)
+            elif proto == dpkt.ethernet.ETH_TYPE_IP:
+            	srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
+            	ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
+            	if not srcIp in ('192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
+            		print ipProto, srcIp
+            		if ipProto == dpkt.ip.IP_PROTO_TCP:
+            			tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
+            			fp.write(tcpData + '\n\n')
+            			fp.flush()
+    fp.close()
 
 if __name__ == '__main__':
     main()
