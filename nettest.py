@@ -100,6 +100,7 @@ ETH eth = {
 
 import socket, dpkt, sys, time
 from proto import *
+from net import *
 
 p = EqParser()
 
@@ -109,6 +110,8 @@ fp.close()
 p.execute(text, locals())
 
 text = r'''
+import('eth.proto')
+
 bcMAC:MAC = "ff:ff:ff:ff:ff:ff"
 unMAC:MAC = "00:00:00:00:00:00"
 bcIP:IPv4 = "255.255.255.0"
@@ -179,16 +182,17 @@ arp.dstMac = unMAC
 #arp.dstIp = <in ipList>
 '''
 p.execute(text, locals())
-ipList = ['192.168.1.%d' % i for i in range(2, 255)]
+#ipList = ['192.168.1.%d' % i for i in range(2, 255)]
 #ipList = ['192.168.1.80']
+ipList = getipsbyam('192.168.21.140', '255.255.248.0')
 for ipStr in ipList:
 	p.setValue('arp.dstIp', ipStr)
 	data = eth.encode()
 	size = sk.send(data)
-	print 'D|send|%d/%d' % (size, len(data))
+	print 'D|send|%s|%d/%d' % (ipStr, size, len(data))
 	time.sleep(0.1)
 
-#exit(0)
+exit(0)
 
 #cheat machine
 print 'cheating...'
@@ -221,3 +225,4 @@ while True:
 	time.sleep(1)
 
 sk.close()
+

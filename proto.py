@@ -195,8 +195,12 @@ class String(Type):
 
     def decode(self, var, data, level = 0):
         packfmt = self.__packfmt(var)
-        var.value = struct.unpack_from(packfmt, data)[0]
+        try:
+            var.value = struct.unpack_from(packfmt, data)[0]
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        except Exception, msg:
+            print msg, packfmt
+            exit(0)
         return self.calcsize(var)
 
 
@@ -675,7 +679,7 @@ class Parser:
 
 
     def setValue(self, expr, value):
-    	'''set l-value = value'''
+        '''set l-value = value'''
         var = self.parseLValue(expr, self.scope, autoalloc = True, line = 'Parser.setValue(self, %s, %s)' % (repr(expr), repr(value)))
         var.value = value
 
@@ -721,7 +725,8 @@ class EqParser(Parser):
             'decode': ('LR', lambda self, lvar, rdata: lvar.decode(rdata)),
             'calcsize': ('L', lambda self, lvar: lvar.calcsize()),
             'dump': ('L', lambda self, lvar: lvar.dump()),
-            '__size': ('', lambda self: self.oncesize)
+            '__size': ('', lambda self: self.oncesize),
+            'import': ('R*', EqParser.func_import),
         }
         self.pylocals = None
         self.valcache = None
@@ -832,7 +837,7 @@ class EqParser(Parser):
 
                         self.parseFunc(fname, plists[0], self.scope, line = line)
                     else:  # var
-                        self.error(SyntaxError, 'unsupported syntax: %s' % (repr(line)))
+                        self.error(SyntaxError, 'unsupported syntax(lonely): %s' % (repr(line)))
                         return
 
 
@@ -1175,11 +1180,17 @@ class EqParser(Parser):
         return res
 
 
-    #@staticmethod
     def func_print(self, *rvals):
         for rval in rvals:
             print rval,
         print
+        
+
+    def func_import(self, *rfiles):
+        for rfile in rfiles:
+            fp = open(rfile, 'r')
+            self.execute(fp.read(), pylocals = self.pylocals)
+            fp.close()
     
 
 def main():
@@ -1215,51 +1226,7 @@ def main():
     import dpkt
 
     text = r'''
-    ETH_TYPE_ARP:uint16 = ${dpkt.ethernet.ETH_TYPE_ARP}
-    ETH_TYPE_IP:uint16 = ${dpkt.ethernet.ETH_TYPE_IP}
-    
-    ETH = ethHdr:ETH_HDR + ethBody:ETH_BODY(ethHdr.type)
-    
-    ETH_HDR = dst:MAC + src:MAC + type:uint16@
-    
-    ETH_BODY(ETH_TYPE_ARP) = arp:ARP
-    ETH_BODY(ETH_TYPE_IP) = ip:IP
-    ETH_BODY() = unknown:string(sub(__size(), calcsize(ethHdr)), 'hex')
-
-
-        ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4
-
-
-        IP_PROTO_TCP:uint8 = ${dpkt.ip.IP_PROTO_TCP}
-        IP_PROTO_UDP:uint8 = ${dpkt.ip.IP_PROTO_UDP}
-
-        IP = ipHdr:IP_HDR + ipBody:IP_BODY(ipHdr.ipFixed.proto)
-    
-            IP_HDR = ipFixed:IP_HDR_FIXED + ipOpts:IP_HDR_OPTS
-                IP_HDR_FIXED = ver:bits(4) + ipHdrLen:bits(4) + diffServ:uint8 + ipLength:uint16@ + flags:uint16@ + mf:bits(1) + df:bits(1) + rf:bits(1) + frag:bits(13) + ttl:uint8 + proto:uint8 + checkSum:uint16@ + srcIp:IPv4 + dstIp:IPv4
-                IP_HDR_OPTS = options:string(sub(mul(ipFixed.ipHdrLen, 4), calcsize(ipFixed)), 'hex')
-    
-            IP_BODY(IP_PROTO_TCP) = tcp:TCP
-            IP_BODY(IP_PROTO_UDP) = udp:UDP
-            IP_BODY() = unknown:string(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), 'hex')
-
-
-                TCP = tcpHdr:TCP_HDR + tcpBody:TCP_BODY
-
-                    TCP_HDR = tcpFixed:TCP_HDR_FIXED + tcpOpts:TCP_HDR_OPTS
-                        TCP_HDR_FIXED = srcPort:uint16@ + dstPort:uint16@ + seq:uint32@ + ack:uint32@ + tcpHdrLen:bits(4) + resv:bits(6) + urgf:bits(1) + ackf:bits(1) + pshf:bits(1) + rstf:bits(1) + synf:bits(1) + finf:bits(1) + win:uint16@ + checkSum:uint16@ + urgent:uint16@
-                        TCP_HDR_OPTS = options:string(sub(mul(tcpFixed.tcpHdrLen, 4), calcsize(tcpFixed)), 'hex')
-
-                    TCP_BODY = data:string(sub(sub(ipHdr.ipFixed.ipLength, calcsize(ipHdr)), calcsize(tcpHdr)), 'hex')
-
-
-                UDP = udpHdr:UDP_HDR + udpBody:UDP_BODY
-
-                    UDP_HDR = srcPort:uint16@ + dstPort:uint16@ + udpLength:uint16@ + checksum:uint16@
-
-                    UDP_BODY = data:string(sub(udpHdr.udpLength, calcsize(udpHdr)), 'hex')
-
-
+    import('eth.proto')
     eth:ETH
     '''
 
@@ -1305,6 +1272,14 @@ def main():
 
         yield data
     
+    
+    def xcall(func, *l, **d):
+        try:
+            return func(*l, **d)
+        except Exception, msg:
+            print 'Exception:', msg
+            return None
+
 
     p.execute(text, pylocals = locals())
     eth = p.getVar('eth')
@@ -1314,8 +1289,9 @@ def main():
     for data in getData():
         if data == None:
             break
+        
+        xcall(eth.decode, data)
 
-        eth.decode(data)
         proto = p.getValue('eth.ethHdr.type')
         #if proto != dpkt.ethernet.ETH_TYPE_IP:
             #print hex(proto)
@@ -1329,14 +1305,14 @@ def main():
                     #print eth.dump()
                     print 'new|%s' % (srcIp)
             elif proto == dpkt.ethernet.ETH_TYPE_IP:
-            	srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
-            	ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
-            	if not srcIp in ('192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
-            		print ipProto, srcIp
-            		if ipProto == dpkt.ip.IP_PROTO_TCP:
-            			tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
-            			fp.write(tcpData + '\n\n')
-            			fp.flush()
+                srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
+                ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
+                if not srcIp in ('192.168.21.140', '192.168.17.25', '192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
+                    #print ipProto, srcIp
+                    if ipProto == dpkt.ip.IP_PROTO_TCP:
+                        tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
+                        fp.write(tcpData + '\n\n')
+                        fp.flush()
     fp.close()
 
 if __name__ == '__main__':
