@@ -42,13 +42,14 @@ class FwTcpPort(FwIpPort):
         self.sck.listen(5)
         self.sscks = dict()  # {ssck:(dsck, saddr), ...}
         self.dscks = dict()  # {dsck:(ssck, daddr), ... }
-        try:
+        while True:
             torlist = [self.sck]
             while True:
                 rlist, wlist, xlist = select.select(torlist, list(), list(), 1)
                 for rsck in rlist:
                     if rsck is self.sck:  # listen sock
                         ssck, saddr = rsck.accept()
+                        print 'D|accept'
                         daddr, hook = None, None
                         if not saddr[0] in self.regs:  # unregistered addr
                             if '0.0.0.0' in self.regs:
@@ -79,8 +80,8 @@ class FwTcpPort(FwIpPort):
                     else:  # src sock or dst sock
                         data = rsck.recv(0xffff)
                         wsck, raddr = None, None
-                        rsck_, waddr_ = None, None  # debug
-                        saddr, riss = None, None, None  # is reading src sock
+                        rsck_, waddr = None, None  # debug
+                        saddr, riss = None, None  # is reading src sock
                         if rsck in self.sscks:
                             riss = True
                         elif rsck in self.dscks:
@@ -91,45 +92,49 @@ class FwTcpPort(FwIpPort):
                         if not data:  # connection closed
                             if riss:  # src sock closed
                                 wsck, raddr = self.sscks.pop(rsck)
-                                rsck_, waddr_ = self.dscks.pop(wsck)  # debug
+                                rsck_, waddr = self.dscks.pop(wsck)  # debug
                                 saddr = raddr
                             else:  # dst sock closed
                                 wsck, raddr = self.dscks.pop(rsck)
-                                rsck_, waddr_ = self.sscks.pop(wsck)  # debug
+                                rsck_, waddr = self.sscks.pop(wsck)  # debug
                                 saddr = waddr
                             assert(rsck_ is rsck)  # debug
 
                             torlist.remove(rsck)
                             torlist.remove(wsck)
+                            if rsck in rlist:
+                            	rlist.remove(rsck)
+                            if wsck in rlist:
+                            	rlist.remove(wsck)
 
-                            daddr, hook = self.regs[saddr[0]]
+                            daddr, hook = (saddr[0] in self.regs and self.regs[saddr[0]]) or self.regs['0.0.0.0']
                             if hook != None:
                                 hook(data, raddr, waddr, riss)
 
                             rsck.close()
                             wsck.close()
+
                             print 'D|del pair'
-                            continue
 
                         else:  # forward data
                             if riss:  # src sock -> dst sock
                                 wsck, raddr = self.sscks[rsck]
-                                rsck_, waddr_ = self.dscks[wsck]  # debug
+                                rsck_, waddr = self.dscks[wsck]  # debug
                                 saddr = raddr
                             else:  # dst sock -> src sock
                                 wsck, raddr = self.dscks[rsck]
-                                rsck_, waddr_ = self.sscks[wsck]  # debug
+                                rsck_, waddr = self.sscks[wsck]  # debug
                                 saddr = waddr
                             assert(rsck_ is rsck)
 
-                            daddr, hook = self.regs[saddr[0]]
+                            daddr, hook = (saddr[0] in self.regs and self.regs[saddr[0]]) or self.regs['0.0.0.0']
                             if hook != None:
                                 data = hook(data, raddr, waddr, riss)
 
                             wsck.send(data)
 
-        except Exception, msg:
-            print 'Exception:', msg
+        while True:#except Exception, msg:
+            pass#print 'Exception:', msg
 
         self.sck.close()
 
