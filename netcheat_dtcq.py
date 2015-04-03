@@ -26,7 +26,7 @@ def loginhook(data, fromaddr, toaddr, fromissrc):
     begin = data.find(jskw) + len(jskw)
     jd = data[begin:]
     end = begin + jd.find('\r\n')
-    print data
+    #print data
     
     jd = data[begin:end]
     jd = json.loads(jd)
@@ -38,12 +38,12 @@ def loginhook(data, fromaddr, toaddr, fromissrc):
 
     #print json.dumps(jd)
 
-    data2 = begins + json.dumps(jd, sort_keys=True).replace(': ', ':').replace(', ', ',') + ends
+    data2 = begins + json.dumps(jd, sort_keys=True).replace(': ', ':').replace(', ', ',').replace(r'/', r'\/') + ends
     delta = len(data2) - len(data)
     
     cl = data.find(conlen) + len(conlen)
     cls = data[cl:data[cl:].find('\r\n') + cl]
-    print '@@@', len(data[cl + 5:])
+    #print '@@@', len(data[cl + 5:])
     cls2 = str(int(cls) + delta)
     finds = conlen + cls
     replaces = conlen + cls2
@@ -52,7 +52,7 @@ def loginhook(data, fromaddr, toaddr, fromissrc):
 
 
     cl = data2.find(conlen) + len(conlen)
-    print '@@@', len(data2[cl + 5:])
+    #print '@@@', len(data2[cl + 5:])
 
     #lines = data.splitlines()
     #print lines
