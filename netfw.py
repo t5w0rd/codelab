@@ -30,8 +30,10 @@ class FwTcpPort(FwIpPort):
         self.dscks = None
 
 
-    def start(self, bindaddr):
+    def start(self, bindaddr, reuseaddr = False):
         self.sck = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+        if reuseaddr:
+            self.sck.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self.sck.bind(bindaddr)
         except Exception, msg:
@@ -109,7 +111,7 @@ class FwTcpPort(FwIpPort):
 
                             daddr, hook = (saddr[0] in self.regs and self.regs[saddr[0]]) or self.regs['0.0.0.0']
                             if hook != None:
-                                hook(data, raddr, waddr, riss)
+                                hook(data, fromaddr = raddr, toaddr = waddr, fromissrc = riss)
 
                             rsck.close()
                             wsck.close()
@@ -129,7 +131,7 @@ class FwTcpPort(FwIpPort):
 
                             daddr, hook = (saddr[0] in self.regs and self.regs[saddr[0]]) or self.regs['0.0.0.0']
                             if hook != None:
-                                data = hook(data, raddr, waddr, riss)
+                                data = hook(data, fromaddr = raddr, toaddr = waddr, fromissrc = riss) or data
 
                             wsck.send(data)
 
@@ -144,14 +146,27 @@ def main():
 
     fwp = FwTcpPort()
     if len(sys.argv) <= 1:  # example
+        def httphook(data, **args):
+            fromaddr = args['fromaddr']
+            fromissrc = args['fromissrc']
+            if fromissrc:
+                datalines = data.splitlines()
+                for index, line in enumerate(datalines):
+                    if line[:6] == 'Host: ':
+                        datalines[index] = 'Host: 220.181.111.188'
+                data = '\r\n'.join(datalines) + '\r\n'
+
+            print data
+            return data
+
         bindaddr = ('0.0.0.0', 2888)
-        fwp.register('127.0.0.1', ('192.168.2.3', 22))
+        fwp.register('0.0.0.0', ('220.181.111.188', 80), hook = httphook)
     else:
         bindaddr = (sys.argv[1], int(sys.argv[2]))
         for i in range(3, len(sys.argv), 3):
             fwp.register(sys.argv[i], (sys.argv[i + 1], int(sys.argv[i + 2])))
 
-    fwp.start(bindaddr)
+    fwp.start(bindaddr, reuseaddr = True)
 
 
 if __name__ == '__main__':
