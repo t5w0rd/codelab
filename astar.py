@@ -79,14 +79,14 @@ def astar(mp, start, end):
         closeNodes[minFNode] = openNodes.pop(minFNode)
 
         nextNodes = {
-                (minFNode[0] - 1, minFNode[1] - 1): 14,
+                (minFNode[0] - 1, minFNode[1] - 1) : 14,
                 (minFNode[0] - 1, minFNode[1]) : 10,
                 (minFNode[0] - 1, minFNode[1] + 1) : 14,
                 (minFNode[0], minFNode[1] - 1) : 10,
                 (minFNode[0], minFNode[1] + 1) : 10,
                 (minFNode[0] + 1, minFNode[1] - 1) : 14,
                 (minFNode[0] + 1, minFNode[1]) : 10,
-                (minFNode[0] + 1, minFNode[1] + 1): 14}
+                (minFNode[0] + 1, minFNode[1] + 1) : 14}
         
         for nextNode, incG in nextNodes.iteritems():
             if nextNode[0] < 0 or nextNode[0] >= height or nextNode[1] < 0 or nextNode[1] >= width:
@@ -151,7 +151,7 @@ def main():
     mp[2][7] = 4
     #printMap(mp)
     start = (0, 0)
-    end = (19, 19)
+    end = (17, 17)
     closeNodes = astar(mp, start, end)
     if end in closeNodes:
         curNode = end
