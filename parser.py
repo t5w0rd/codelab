@@ -17,12 +17,12 @@ def splitWithPairs(s, seps, pairDict):
     for c in s:
         empty = (len(stack) == 0)
         if empty and (c in seps):
-        	res.append(s[start: end])
-        	start = end + 1
+            res.append(s[start: end])
+            start = end + 1
         elif (c in pop) and (not empty) and (c == push[stack[-1]][0]):
-        	stack.pop()
+            stack.pop()
        	elif (c in push) and (empty or (push[c][1] >= push[stack[-1]][1])):
-        	stack.append(c)
+            stack.append(c)
         end += 1
 
     res.append(s[start: end])

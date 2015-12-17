@@ -1322,7 +1322,7 @@ def main():
         proto = p.getValue('eth.ethHdr.type')
         #if proto != dpkt.ethernet.ETH_TYPE_IP:
             #print hex(proto)
-        if True or proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
+        if proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
             #print eth.dump()
             if proto == dpkt.ethernet.ETH_TYPE_ARP:
                 srcIp = p.getValue('eth.ethBody.arp.srcIp')
@@ -1334,7 +1334,7 @@ def main():
             elif proto == dpkt.ethernet.ETH_TYPE_IP:
                 srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
                 ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
-                if not srcIp in ('192.168.21.140', '192.168.17.25', '192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
+                if True or not srcIp in ('192.168.21.140', '192.168.17.25', '192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
                     #print ipProto, srcIp
                     if ipProto == dpkt.ip.IP_PROTO_TCP:
                         tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
