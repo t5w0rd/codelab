@@ -66,7 +66,7 @@ class Variable:
         parser.oncesize = len(data)
         size = self.type.decode(self, data)
         parser.unrefValCache()
-        parser.oncesize = 0
+        #parser.oncesize = 0
         return size
 
 
@@ -404,7 +404,8 @@ class Struct(Type):
         for fname in self.fseq:
             fvar = var.value[fname]
             if fvar != None:
-                ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                #ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                ftype = fvar.type
                 res += '\n' + ftype.dumpstr(fvar, short = short, level = level + 1)
         if len(res) == size:
             res += '}'
@@ -418,7 +419,8 @@ class Struct(Type):
         for fname in self.fseq:
             fvar = var.value[fname]
             if not fvar == None:
-                ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                #ftype = self.scope.getType(self.ftypeexpr[fname], var)
+                ftype = fvar.type
                 ftype.dumpdict(fvar, data = val, transform = transform)
             else:
                 val = None
@@ -426,11 +428,20 @@ class Struct(Type):
 
     
 class Array(Type):
-    def __init__(self, scope, itype, size):
+    def __init__(self, scope, itype, size, datasize = False):
         '''typeexpr: BODY(hdr.result)'''
-        Type.__init__(self, scope, '%s[%d]' % (itype.name, size))
+        if not datasize:
+            Type.__init__(self, scope, '%s[%d]' % (itype.name, size))
+        else:
+            Type.__init__(self, scope, '%s[<%d>]' % (itype.name, size))
         self.itype = itype
-        self.size = size
+        self.usedatasize = datasize  # size is dynamic
+        if not self.usedatasize:
+            self.size = size
+            self.datasize = 0
+        else:
+            self.size = 0
+            self.datasize = size
 
 
     def allocVar(self, name):
@@ -462,11 +473,19 @@ class Array(Type):
     def decode(self, var, data, level = 0):
         #print 'D| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
         pos = 0
-        for index in range(self.size):
+        index = 0
+        while (not self.usedatasize and index < self.size) or (self.usedatasize and pos < self.datasize):
+        #for index in range(self.size):
             ivar = self.itype.allocVar(index)
             ivar.upvalue = var
-            var.value[index] = ivar
+            if self.usedatasize:
+                var.value.append(ivar)
+            else:
+                var.value[index] = ivar
             pos += self.itype.decode(ivar, data[pos:], level = level + 1)
+            index += 1
+            if self.usedatasize:
+                self.size = index
         #print 'D| ' + '    ' * level + ']'
         return pos
 
@@ -704,9 +723,9 @@ class EqParser(Parser):
     '''EqParser'''
     
     reBetweenBrackets = re.compile(r'\((.*)\)')
-    reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
+    reBetweenSqrBrackets = re.compile(r'\[(<.*>)\]')
     reEval = re.compile(r'${(.*)}')
-    reParseLine = re.compile(r'".*"|[+=:#]|[\w_(){}\[\]$.\',@]+')
+    reParseLine = re.compile(r'".*"|[+=:#]|[\w_<>(){}\[\]$.\',@]+')
     spSplitFuncParams = {'()': 2, '[]': 1, '""': 4, "''": 4}
 
 
@@ -755,7 +774,7 @@ class EqParser(Parser):
                 self.error(NameError, 'keyword(%s) is not implemented: ' % (repr(word), line))
                 return
             else:  # not a keyword
-                if len(words) > 0: # normal statement
+                if len(words) > 0:  # normal statement
                     if words[0] == '=' and len(words) >= 3 and words[2] == ':':  # TYPE = field1:type1 ...
                         tname = word  # type
                         proto = list()
@@ -1045,9 +1064,14 @@ class EqParser(Parser):
 
             vtype = self.parseType(vtype, varscope, line = line)
 
-            val = self.parseRValue(exprs[0], varscope, line = line)
+            # <3312>
+            usedatasize = exprs[0][0] == '<' and exprs[0][-1] == '>'
+            if usedatasize:
+                val = self.parseRValue(exprs[0][1:-1], varscope, line = line)
+            else:
+                val = self.parseRValue(exprs[0], varscope, line = line)
             if isinstance(val, int):
-                return Array(self.scope, vtype, val)
+                return Array(self.scope, vtype, val, usedatasize)
             else:
                 self.error(ValueError, 'value(%s) is not an integer: %s' % (repr(exprs[0]), repr(line)))
                 return None
@@ -1126,7 +1150,7 @@ class EqParser(Parser):
         except:
             # 'adff' / "fapsdf"
             if (s[0] == '\'' or s[0] == '\"') and s[0] == s[-1]:
-                return eval(s, globals(), self.pylocals)
+                return eval(s, globals(), self.pylocals)  # 'abc' / "abc" -> 'abc'
 
         return None
 
@@ -1201,7 +1225,7 @@ def main():
     PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
     PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
     PNG_DATA() = data:string(Length, 'base64')
-    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[1]
+    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[<sub(__size(), calcsize(sig))>]
 
     png:PNG
     '''
@@ -1212,8 +1236,11 @@ def main():
     f.close()
 
     png = p.getVar('png')
+    p.refValCache()
     png.decode(data)
-    #print png.dump()
+    print png.dump()
+    p.unrefValCache()
+    #exit(0)
 
     import json
     d = png.dump(mode = 'dict', transform = True)
