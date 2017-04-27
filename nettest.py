@@ -88,7 +88,7 @@ ETH eth = {
 192.168.1.107
 
 
-	
+    
 14-E6-E4-FD-83-B8
 
 
@@ -184,13 +184,14 @@ arp.dstMac = unMAC
 p.execute(text, locals())
 #ipList = ['192.168.1.%d' % i for i in range(2, 255)]
 #ipList = ['192.168.1.80']
-ipList = getipsbyam('192.168.21.140', '255.255.248.0')
+#ipList = getipsbyam('192.168.21.140', '255.255.248.0')
+ipList = getipsbyam('10.8.73.198', '255.255.255.0')
 for ipStr in ipList:
-	p.setValue('arp.dstIp', ipStr)
-	data = eth.encode()
-	size = sk.send(data)
-	print 'D|send|%s|%d/%d' % (ipStr, size, len(data))
-	time.sleep(0.1)
+    p.setValue('arp.dstIp', ipStr)
+    data = eth.encode()
+    size = sk.send(data)
+    print 'D|send|%s|%d/%d' % (ipStr, size, len(data))
+    time.sleep(0.1)
 
 exit(0)
 
@@ -215,14 +216,14 @@ p.execute(text, locals())
 
 print eth.dump('str')
 while True:
-	for ipStr, macStr in addrList.iteritems():
-		p.setValue('eth.ethHdr.dst', macStr)
-		p.setValue('arp.dstIp',	ipStr)
-		data = eth.encode()
-		size = sk.send(data)
-		print 'D|send|%d/%d' % (size, len(data))
-		time.sleep(0.1)
-	time.sleep(1)
+    for ipStr, macStr in addrList.iteritems():
+        p.setValue('eth.ethHdr.dst', macStr)
+        p.setValue('arp.dstIp', ipStr)
+        data = eth.encode()
+        size = sk.send(data)
+        print 'D|send|%d/%d' % (size, len(data))
+        time.sleep(0.1)
+    time.sleep(1)
 
 sk.close()
 
