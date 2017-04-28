@@ -239,6 +239,10 @@ def arpCheat(addrList):
     except Exception, e:
         traceback.print_exc()
 
-arpCheat({'192.168.50.178': '2c:0e:3d:68:09:49'})
+if sys.argv[2] == 'cheat':
+    arpCheat({sys.argv[3]: sys.argv[4]})
+else:
+    arpFind()
+
 sk.close()
 
