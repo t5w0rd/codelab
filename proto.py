@@ -582,6 +582,8 @@ class Scope(Variable):
     def __init__(self, name, parser):
         Variable.__init__(self, None, name, value = dict(), upvalue = None)
         self.parser = parser
+
+        # types with no params
         self.tmap = {
             'uint8': Basic(self, 'uint8', 'B', defval = 0),
             'uint16': Basic(self, 'uint16', 'H', defval = 0),
@@ -599,6 +601,12 @@ class Scope(Variable):
             'int64@': Basic(self, 'int64@', '>q', defval = 0L),
             'IPv4': IPv4(self),
             'MAC': MAC(self)
+        }
+
+        # types with params
+        self.tpmap = {
+            'string': String,
+            'bits': Bits
         }
 
 
@@ -733,7 +741,7 @@ class EqParser(Parser):
         Parser.__init__(self)
         self.state = State({'idle'}, 'idle')
         self.keywords = {}
-        self.funcions = {
+        self.functions = {
             'add': ('RR', lambda self, x, y: x + y),
             'sub': ('RR', lambda self, x, y: x - y),
             'mul': ('RR', lambda self, x, y: x * y),
@@ -750,6 +758,14 @@ class EqParser(Parser):
         self.pylocals = None
         self.valcache = None
         self.oncesize = 0  # use for decoding once
+
+
+    def definedTypes(self):
+        return sorted(self.scope.tmap.keys() + self.scope.tpmap.keys())
+
+
+    def definedFunctions(self):
+        return ['%s(%s)' % (func, info[0]) for func, info in sorted(self.functions.iteritems(), key=lambda x:x[0])]
 
 
     def execute(self, text, pylocals = None):
@@ -1008,11 +1024,11 @@ class EqParser(Parser):
 
 
     def parseFunc(self, fname, paramexprs, varscope, line = ''):
-        if not fname in self.funcions:  # function not defined
+        if not fname in self.functions:  # function not defined
             self.error(NameError, 'function(%s) is not defined: %s' % (repr(fname), repr(line)))
             return None
 
-        fparamlr, func = self.funcions[fname]
+        fparamlr, func = self.functions[fname]
         paramlist = EqParser.splitWithPairs(paramexprs, ',', EqParser.spSplitFuncParams)
         #print 'D|parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
         vals = list()
@@ -1085,7 +1101,7 @@ class EqParser(Parser):
                 return None
 
             
-            if vtype in ('string', 'bits'):
+            if vtype in self.scope.tpmap:
                 #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
                 paramexprs = EqParser.splitWithPairs(exprs[0], ',', EqParser.spSplitFuncParams)
                 vals = [self.parseRValue(paramexpr, varscope, line = line) for paramexpr in paramexprs]
@@ -1099,12 +1115,12 @@ class EqParser(Parser):
                         self.error(ValueError, 'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
                         return None
                     
-                    return String(self.scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)
+                    return self.scope.tpmap[vtype](self.scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)  # return String obj
                 elif vtype == 'bits':
                     if not isinstance(vals[0], int) and exprs[0] != '':
                         self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
                         return None
-                    return Bits(self.scope, vals[0])
+                    return self.scope.tpmap[vtype](self.scope, vals[0])  # return Bits obj
 
             val = self.parseRValue(exprs[0], varscope, line = line)
             if isinstance(val, dict) or isinstance(val, list):  # struct value, or array value
