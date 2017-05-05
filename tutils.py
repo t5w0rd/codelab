@@ -3,7 +3,8 @@
 import os
 import sys
 import socket
-import subprocess
+import pty
+#import subprocess
 
 
 class Net:
@@ -80,8 +81,28 @@ class Net:
         self.__tcp = None
         
     def redirect(self, cmd):
-        child = subprocess.Popen(cmd, shell=False, stdin=self.__tcp, stdout=self.__tcp, stderr=self.__tcp)
-        child.wait()
+        #child = subprocess.Popen(cmd, shell=False, stdin=self.__tcp, stdout=self.__tcp, stderr=self.__tcp)
+        orgIn = os.dup(sys.stdin.fileno())
+        orgOut = os.dup(sys.stdout.fileno())
+        orgErr = os.dup(sys.stderr.fileno())
+        sys.stdin.close()
+        sys.stdout.close()
+        sys.stderr.close()
+        os.dup2(self.__tcp.fileno(), sys.stdin.fileno())
+        os.dup2(self.__tcp.fileno(), sys.stdout.fileno())
+        os.dup2(self.__tcp.fileno(), sys.stderr.fileno())
+        pty.spawn(cmd.split())
+        os.wait()
+        sys.stdin.close()
+        sys.stdout.close()
+        sys.stderr.close()
+        os.dup2(orgIn, sys.stdin.fileno())
+        os.dup2(orgOut, sys.stdout.fileno())
+        os.dup2(orgErr, sys.stderr.fileno())
+        os.close(orgIn)
+        os.close(orgOut)
+        os.close(orgErr)
+        #child.wait()
 
 __net = Net()
 
