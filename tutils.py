@@ -148,17 +148,21 @@ def _swap(read_fd, write_fd, read2_fd=STDIN_FILENO, write2_fd=STDOUT_FILENO, rea
         if read_fd in rfds:
             data = read_func(read_fd)
             if not data:  # Reached EOF.
+                #print '#'
                 break
                 #fds.remove(read_fd)
             else:
+                #print '@2', data
                 write2_func(write2_fd, data)
 
         if read2_fd in rfds:
             data = read2_func(read2_fd)
             if not data:
+                #print '#2'
                 break
                 #fds.remove(read2_fd)
             else:
+                #print '@', data.encode('hex')
                 write_func(write_fd, data)
 
 
@@ -166,5 +170,4 @@ _net = Net()
 
 def net():
     return _net
-
 
