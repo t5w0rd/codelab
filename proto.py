@@ -9,6 +9,8 @@
 import struct
 import re
 
+__all__ = ["EqParser", ]
+
 
 class Variable:
     def __init__(self, vtype, name, value = None, upvalue = None):
