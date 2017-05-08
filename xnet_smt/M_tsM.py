@@ -2,5 +2,5 @@
 
 import tutils
 
-tutils.ptyPipe('M', 'tsM', host='localhost', port=2888, rhost='localhost', rport=2889)
+tutils.ptyPipe('M', 'tsM', host='0.0.0.0', port=3888, rhost='0.0.0.0', rport=3889)
 

@@ -2,4 +2,4 @@
 
 import tutils
 
-tutils.ptyPipe('s', 'tsM', host='localhost', port=2888)
+tutils.ptyPipe('s', 'tsM', host='45.77.23.212', port=3888)

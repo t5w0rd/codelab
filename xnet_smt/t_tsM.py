@@ -2,4 +2,4 @@
 
 import tutils
 
-tutils.ptyPipe('t', 'tsM', host='localhost', port=2889, ssh_user='t5w0rd', ssh_host='localhost', ssh_port=22)
+tutils.ptyPipe('t', 'tsM', host='45.77.23.212', port=3889, cmd='ssh dev@10.9.19.249 -p 22')

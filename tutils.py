@@ -280,13 +280,11 @@ def ptyPipe(who, env, **args):
         elif who == 't':
             rs_host = args['host']  # reverse server host
             rs_port = args['port']  # reverse server port
-            ssh_user = args['ssh_user']
-            ssh_host = args['ssh_host']
-            ssh_port = args['ssh_port']
+            cmd = args['cmd']
 
             def rsHandler(rs_net):
                 #print 'remote connection: %s:%d' % rs_net.addr()
-                rs_net.rpty('ssh %s@%s -p %d' % (ssh_user, ssh_host, ssh_port))
+                rs_net.rpty(cmd)
 
             rs_net = XNet()
             rs_net.rServer(rs_host, rs_port, handler=rsHandler)
