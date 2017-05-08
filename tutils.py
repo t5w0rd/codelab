@@ -120,7 +120,7 @@ class Net:
         try:
             _swap(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
         except (IOError, OSError):
-            print '$swap error'
+            #print '$swap error'
             pass
         if close_wait >= 0:
             time.sleep(close_wait)
@@ -143,7 +143,7 @@ class Net:
         try:
             _swap(read_fd=tcp_fd, write_fd=tcp_fd, eof2_break=eof_break)
         except (IOError, OSError):
-            print '$swap error'
+            #print '$swap error'
             pass
         finally:
             if restore:
@@ -195,7 +195,7 @@ def _swap(read_fd, write_fd, read2_fd=STDIN_FILENO, write2_fd=STDOUT_FILENO, rea
 
 
 def _rpty(net):
-    print 'remote connection: %s:%d' % net.addr()
+    #print 'remote connection: %s:%d' % net.addr()
     net.rpty('bash')
 
 def _lpty(net):
@@ -226,7 +226,7 @@ class XNet(Net):
                 handler(self)
                 self.close()
             except socket.error, e:
-                print e
+                #print e
                 pass
 
             time.sleep(interval)
@@ -285,7 +285,7 @@ def ptyPipe(who, env, **args):
             ssh_port = args['ssh_port']
 
             def rsHandler(rs_net):
-                print 'remote connection: %s:%d' % rs_net.addr()
+                #print 'remote connection: %s:%d' % rs_net.addr()
                 rs_net.rpty('ssh %s@%s -p %d' % (ssh_user, ssh_host, ssh_port))
 
             rs_net = XNet()
