@@ -19,7 +19,7 @@ STDERR_FILENO = sys.stderr.fileno()
 
 class Net:
     _lstn = None
-    _tcp = None
+    _tcp, _addr = None, None
     _udp = None  #socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
 
     def __init__(self):
@@ -35,11 +35,9 @@ class Net:
         self._lstn.listen(1)
         if self._tcp:
             self._tcp.close()
-        self._tcp, addr = self._lstn.accept()
+        self._tcp, self._addr = self._lstn.accept()
         self._lstn.close()
         self._lstn = None
-
-        return addr
 
     def send(self, s):
         '''send a string or iterable strings; return the number of bytes sent.'''
@@ -89,20 +87,24 @@ class Net:
 
     def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
         '''connect remote host'''
+        
+        tcp = socket.socket(type=socket.SOCK_STREAM)
+        tcp.bind((lhost, lport))
         if self._tcp:
             self._tcp.close()
-        
-        self._tcp = socket.socket(type=socket.SOCK_STREAM)
-        self._tcp.bind((lhost, lport))
+        self._tcp, self._addr = tcp, (host, port)
         self._tcp.connect((host, port))
 
     def close(self):
         '''close the tcp socket'''
         self._tcp.close()
-        self._tcp = None
+        self._tcp, self._addr = None, None
 
     def fileno(self):
         return self._tcp.fileno()
+
+    def addr(self):
+        return self._addr
         
     def rpty(self, cmd, close_wait=0):
         '''remote execute, I/O from tcp.
@@ -192,49 +194,51 @@ def _swap(read_fd, write_fd, read2_fd=STDIN_FILENO, write2_fd=STDOUT_FILENO, rea
                 write_func(write_fd, data)
 
 
-def _rptyBash(net):
+def _rpty(net):
+    print 'remote connection: %s:%d' % net.addr()
     net.rpty('bash')
 
-def _lptyBash(net):
-    net.lpty
+def _lpty(net):
+    net.lpty()
 
 class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def pServer(self, host, port, handler=_rptyBash):
+    def pServer(self, host, port, handler=_rpty):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
             handler(self)
             self.close()
 
-    def pClient(self, host, port, handler=_lptyBash):
+    def pClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.connect(host, port)
         handler(self)
         self.close()
 
-    def rServer(self, host, port, interval=1, handler=_rptyBash):
+    def rServer(self, host, port, interval=1, handler=_rpty):
         '''socket <-> pty'''
         while True:
             try:
                 self.connect(host, port)
                 handler(self)
                 self.close()
-            except socket.error:
+            except socket.error, e:
+                print e
                 pass
 
             time.sleep(interval)
 
-    def rClient(self, host, port, handler=_lptyBash):
+    def rClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.listen(host, port)
         handler(self)
         self.close()
 
 
-def bashPipe(who, env, **args):
+def ptyPipe(who, env, **args):
     '''who:
     M: middle host with public ip;
     s: source host with internal ip;
@@ -251,24 +255,41 @@ def bashPipe(who, env, **args):
     '''
     if env == 'stM' or env == 'tsM':
         if who == 'M':
-            rs_host = args['rs_host']  # reverse server host
-            rs_port = args['rs_port']  # reverse server port
-            def rcHandler(rc_net):
-                ps_host = args['ps_host']  # positive server listen host
-                ps_port = args['ps_port']  # positive server listen port
-                def psHandler(ps_net):
+            ps_host = args['host']  # positive server listen host
+            ps_port = args['port']  # positive server listen port
+            rs_host = args['rhost']  # reverse server host
+            rs_port = args['rport']  # reverse server port
+            
+            def psHandler(ps_net):
+                def rcHandler(rc_net):
                     _swap(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
-
-                ps_net = XNet()
-                ps_net.pServer(ps_host, ps_port, handler=psHandler)
-
-            rc_net = XNet()
-            rc_net.rClient(rs_host, rs_port, handler=rcHandler)
+                
+                rc_net = XNet()  # reverse client
+                rc_net.rClient(rs_host, rs_port, handler=rcHandler)
+            
+            ps_net = XNet()  # positive server
+            ps_net.pServer(ps_host, ps_port, handler=psHandler)
 
         elif who == 's':
-            pass
+            ps_host = args['host']  # positive server listen host
+            ps_port = args['port']  # positive server listen port
+
+            pc_net = XNet()
+            pc_net.pClient(ps_host, ps_port)
+            
         elif who == 't':
-            pass
+            rs_host = args['host']  # reverse server host
+            rs_port = args['port']  # reverse server port
+            ssh_user = args['ssh_user']
+            ssh_host = args['ssh_host']
+            ssh_port = args['ssh_port']
+
+            def rsHandler(rs_net):
+                print 'remote connection: %s:%d' % rs_net.addr()
+                rs_net.rpty('ssh %s@%s -p %d' % (ssh_user, ssh_host, ssh_port))
+
+            rs_net = XNet()
+            rs_net.rServer(rs_host, rs_port, handler=rsHandler)
             
     elif env == 'sMt':
         pass
