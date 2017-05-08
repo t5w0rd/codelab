@@ -2,4 +2,4 @@
 
 import tutils
 
-tutils.net().rClient('0.0.0.0', 2888)
+tutils.ptyPipe('S', 'tS', host='0.0.0.0', port=2888)
