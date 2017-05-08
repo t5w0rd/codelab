@@ -253,6 +253,7 @@ def ptyPipe(who, env, **args):
     stM or tsM: s!t s>M t>M
     sMt: s!t s>M M=t
     '''
+
     if env == 'stM' or env == 'tsM':
         if who == 'M':
             ps_host = args['host']  # positive server listen host
@@ -281,7 +282,7 @@ def ptyPipe(who, env, **args):
             rs_host = args['host']  # reverse server host
             rs_port = args['port']  # reverse server port
             cmd = args['cmd']
-
+    
             def rsHandler(rs_net):
                 #print 'remote connection: %s:%d' % rs_net.addr()
                 rs_net.rpty(cmd)
@@ -291,6 +292,24 @@ def ptyPipe(who, env, **args):
             
     elif env == 'sMt':
         pass
+    elif env == 'tS':
+        if who == 'S':
+            rs_host = args['host']  # reverse server host
+            rs_port = args['port']  # reverse server port
+
+            rc_net = XNet()
+            rc_net.rClient(rs_host, rs_port)
+        elif who == 't':
+            rs_host = args['host']  # reverse server host
+            rs_port = args['port']  # reverse server port
+            cmd = args['cmd']
+            
+            def rsHandler(rs_net):
+                #print 'remote connection: %s:%d' % rs_net.addr()
+                rs_net.rpty(cmd)
+
+            rs_net = XNet()
+            rs_net.rServer(rs_host, rs_port, handler=rsHandler)
     else:
         pass
 
