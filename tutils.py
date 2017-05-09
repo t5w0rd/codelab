@@ -10,7 +10,7 @@ import select
 import time
 
 
-__all__ = ['Net', 'XNet']
+__all__ = ['XNet', 'net', 'daemonize']
 
 STDIN_FILENO = sys.stdin.fileno()
 STDOUT_FILENO = sys.stdout.fileno()

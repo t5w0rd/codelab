@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 
+import sys
 import tutils
 
-tutils.ptyPipe('M', 'tsM', host='0.0.0.0', port=3888, rhost='0.0.0.0', rport=3889)
+
+try:
+    host = sys.argv[1]
+    port = sys.argv[2]
+    rhost = sys.argv[3]
+    rport = sys.argv[4]
+except:
+    print 'Usage:\n  %s <pHost> <pPort> <rHost> <rPort>' % (sys.argv[0],)
+    sys.exit(1)
+
+tutils.daemonize()
+tutils.ptyPipe('M', 'tsM', host=host, port=port, rhost=host, rport=port)
 

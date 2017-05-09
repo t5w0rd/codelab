@@ -1,5 +1,17 @@
 #!/usr/bin/env python
 
+import sys
 import tutils
 
-tutils.ptyPipe('t', 'tsM', host='45.77.23.212', port=3889, cmd='ssh dev@10.9.19.249 -p 22')
+
+try:
+    host = sys.argv[1]
+    port = sys.argv[2]
+    cmd = sys.argv[3]
+except:
+    print 'Usage:\n  %s <rHost> <rPort> <cmd>' % (sys.argv[0],)
+    sys.exit(1)
+
+tutils.daemonize()
+tutils.ptyPipe('t', 'tsM', host=host, port=port, cmd=cmd)
+
