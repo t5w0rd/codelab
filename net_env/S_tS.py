@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 
+import sys
 import tutils
 
-tutils.ptyPipe('S', 'tS', host='0.0.0.0', port=2888)
+
+try:
+    host = sys.argv[1]
+    port = int(sys.argv[2])
+except:
+    print 'Usage:\n  %s <rHost> <rPort>' % (sys.argv[0],)
+    sys.exit(1)
+
+tutils.ptyPipe('S', 'tS', host=host, port=port)
