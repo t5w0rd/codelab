@@ -14,5 +14,5 @@ except:
     sys.exit(1)
 
 tutils.daemonize()
-tutils.ptyPipe('M', 'tsM', host=host, port=port, rhost=host, rport=port)
+tutils.ptyPipe('M', 'tsM', host=host, port=port, rhost=rhost, rport=rport)
 
