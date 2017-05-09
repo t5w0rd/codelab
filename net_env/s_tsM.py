@@ -6,7 +6,7 @@ import tutils
 
 try:
     host = sys.argv[1]
-    port = sys.argv[2]
+    port = int(sys.argv[2])
 except:
     print 'Usage:\n  %s <pHost> <pPort>' % (sys.argv[0],)
     sys.exit(1)
