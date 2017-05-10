@@ -8,13 +8,12 @@ import tty
 import pty
 import select
 import time
+import fcntl
+import termios
+import array
 
 
 __all__ = ['XNet', 'net', 'daemonize']
-
-STDIN_FILENO = sys.stdin.fileno()
-STDOUT_FILENO = sys.stdout.fileno()
-STDERR_FILENO = sys.stderr.fileno()
 
 
 class Net:
@@ -112,10 +111,15 @@ class Net:
         tcp_fd = self._tcp.fileno()
 
         pid, master_fd = pty.fork()
-        if pid == 0:
+        if pid == pty.CHILD:
             if type(cmd)== str:
                 cmd = cmd.split()
             os.execvp(cmd[0], cmd)
+
+        buf = array.array('H', [25, 80, 0, 0])
+        #fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+        #print '@@', buf
+        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, buf)
 
         try:
             _swap(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
@@ -134,8 +138,8 @@ class Net:
         tcp_fd = self._tcp.fileno()
         restore = 0
         try:
-            mode = tty.tcgetattr(STDIN_FILENO)
-            tty.setraw(STDIN_FILENO)
+            mode = tty.tcgetattr(pty.STDIN_FILENO)
+            tty.setraw(pty.STDIN_FILENO)
             restore = 1
         except tty.error:    # This is the same as termios.error
             pass
@@ -147,7 +151,7 @@ class Net:
             pass
         finally:
             if restore:
-                tty.tcsetattr(STDIN_FILENO, tty.TCSAFLUSH, mode)
+                tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
         
 
 def _write(fd, data):
@@ -160,7 +164,7 @@ def _read(fd):
     """Default read function."""
     return os.read(fd, 1024)
 
-def _swap(read_fd, write_fd, read2_fd=STDIN_FILENO, write2_fd=STDOUT_FILENO, read_func=_read, write_func=_write, read2_func=_read, write2_func=_write, eof_break=True, eof2_break=True):
+def _swap(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT_FILENO, read_func=_read, write_func=_write, read2_func=_read, write2_func=_write, eof_break=True, eof2_break=True):
     """Parent swap data loop.
     Copies
             read_fd -> write2_fd   (read_func, write2_func)

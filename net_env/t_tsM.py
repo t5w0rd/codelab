@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import os
 import tutils
 
 
@@ -13,5 +14,7 @@ except:
     sys.exit(1)
 
 tutils.daemonize()
+if 'HOME' in os.environ:
+    os.chdir(os.environ['HOME'])
 tutils.ptyPipe('t', 'tsM', host=host, port=port, cmd=cmd)
 
