@@ -117,8 +117,10 @@ class Net:
             os.execvp(cmd[0], cmd)
 
         buf = array.array('H', [25, 80, 0, 0])
-        #fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
-        #print '@@', buf
+        try:
+            fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+        except Exception:
+            pass
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, buf)
 
         try:
