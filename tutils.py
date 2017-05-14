@@ -11,6 +11,7 @@ import time
 import fcntl
 import termios
 import array
+import json
 
 
 __all__ = ['XNet', 'net', 'daemonize']
@@ -38,14 +39,17 @@ class Net:
         self._lstn.close()
         self._lstn = None
 
+    def attach(self, tcp, addr=None):
+        if self._tcp:
+            self._tcp.close()
+        self._tcp, self._addr = tcp, addr
+
     def send(self, s):
         '''send a string or iterable strings; return the number of bytes sent.'''
         c = 0
         if isinstance(s, str):
-            m = len(s)
-            while c < m:
-                n = self._tcp.send(s[c:])
-                c += n
+            n = self._tcp.sendall(s)
+            c += n
         elif hasattr(s, '__iter__'):
             c = 0
             for seg in s:
@@ -87,7 +91,7 @@ class Net:
     def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
         '''connect remote host'''
         
-        tcp = socket.socket(type=socket.SOCK_STREAM)
+        tcp = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
         tcp.bind((lhost, lport))
         if self._tcp:
             self._tcp.close()
@@ -105,6 +109,34 @@ class Net:
     def addr(self):
         return self._addr
         
+    def bindu(self, host, port):
+        if self._udp:
+            self._udp.close()
+        self._udp = socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
+        self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self._udp.bind((host, port))
+
+    def sendto(self, s, host=None, port=None):
+        if host == None or port == None:
+            host, port = self._addru
+        else:
+            self._addru = host, port
+        return self._udp.sendto(s, self._addru)
+
+    def recvfrom(self, size=None, timeout=None):
+        self._udp.settimeout(timeout)
+        ret, self._addru = self._udp.recvfrom(size or 0xffff)
+        self._udp.settimeout(None)
+        return ret
+
+    def closeu(self):
+        self._udp.close()
+        self._udp, self._addru = None, None
+
+    def addru(self):
+        return self._addru
+
     def rpty(self, cmd, close_wait=0):
         '''remote execute, I/O from tcp.
         when the connection closed, what child for close_wait seconds. -1: wait until child exits.'''
@@ -124,9 +156,9 @@ class Net:
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, buf)
 
         try:
-            _swap(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
+            _copyLoop(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
         except (IOError, OSError):
-            #print '$swap error'
+            #print '$copy loop error'
             pass
         if close_wait >= 0:
             time.sleep(close_wait)
@@ -136,7 +168,7 @@ class Net:
 
     def lpty(self, eof_break=True):
         '''I/O from tcp.
-        eof_break: True, when reached stdin eof, the swap loop will be break.'''
+        eof_break: True, when reached stdin eof, the copy loop will be break.'''
         tcp_fd = self._tcp.fileno()
         restore = 0
         try:
@@ -147,9 +179,9 @@ class Net:
             pass
         
         try:
-            _swap(read_fd=tcp_fd, write_fd=tcp_fd, eof2_break=eof_break)
+            _copyLoop(read_fd=tcp_fd, write_fd=tcp_fd, eof2_break=eof_break)
         except (IOError, OSError):
-            #print '$swap error'
+            #print '$copy loop error'
             pass
         finally:
             if restore:
@@ -166,8 +198,8 @@ def _read(fd):
     """Default read function."""
     return os.read(fd, 1024)
 
-def _swap(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT_FILENO, read_func=_read, write_func=_write, read2_func=_read, write2_func=_write, eof_break=True, eof2_break=True):
-    """Parent swap data loop.
+def _copyLoop(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT_FILENO, read_func=_read, write_func=_write, read2_func=_read, write2_func=_write, eof_break=True, eof2_break=True):
+    """Parent copy data loop.
     Copies
             read_fd -> write2_fd   (read_func, write2_func)
             read2_fd -> write_fd    (read2_func, write_func)"""
@@ -211,20 +243,20 @@ class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def pServer(self, host, port, handler=_rpty):
+    def posivePtyServer(self, host, port, handler=_rpty):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
             handler(self)
             self.close()
 
-    def pClient(self, host, port, handler=_lpty):
+    def posivePtyClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.connect(host, port)
         handler(self)
         self.close()
 
-    def rServer(self, host, port, interval=1, handler=_rpty):
+    def reversePtyServer(self, host, port, interval=1, handler=_rpty):
         '''socket <-> pty'''
         while True:
             try:
@@ -237,11 +269,103 @@ class XNet(Net):
 
             time.sleep(interval)
 
-    def rClient(self, host, port, handler=_lpty):
+    def reversePtyClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.listen(host, port)
         handler(self)
         self.close()
+
+    def udpNatTrv(self, key, host, port):
+        #addr = self._udp.getsockname()
+        '''
+        a->M  A
+        b->M  B
+
+        b->A  drop
+        b->M  M->A
+        a->B  ok
+        '''
+        # a->M or b->M
+        data = {'cmd':'udpNatTrv', 'key':key}
+        data = json.dumps(data)
+        self.sendto(data, host, port)
+
+        # (M)->a or (M)->b
+        data = self.recvfrom()
+        data = json.loads(data)
+        cmd = data['cmd']
+        assert(cmd == 'udpNatTrv')
+
+        addr = data['addr']
+        if data['next'] == 'send':
+            # B
+            # b->A may be drop
+            data = {'cmd':'udpNatTrv_drop'}
+            data = json.dumps(data)
+            self.sendto(data, *addr)
+
+            # b->M (M->a)
+            data = {'cmd':'udpNatTrv_ready', 'key':key}
+            data = json.dumps(data)
+            self.sendto(data, host, port)
+            
+            # (a)->B
+            data = self.recvfrom()
+            data = json.loads(data)
+            cmd = data['cmd']
+            assert(cmd == 'udpNatTrv_ready')
+            print '@@@ b ok @@@'
+
+        else:
+            # A
+            # (M)->a (or b->a may be drop)
+            data = self.recvfrom()
+            data = json.loads(data)
+            cmd = data['cmd']
+            if cmd == 'udpNatTrv_drop':
+                data = self.recvfrom()
+                data = json.loads(data)
+                cmd = data['cmd']
+            assert(cmd == 'udpNatTrv_ready')
+
+            # a->B  ok
+            data = {'cmd': 'udpNatTrv_ready'}
+            data = json.dumps(data)
+            self.sendto(data, *addr)
+            print '@@@ a ok @@@'
+
+
+    def udpNatTrvServer(self, host, port):
+        keyAddr = dict()
+        self.bindu(host, port)
+        while True:
+            data = self.recvfrom()
+            data = json.loads(data)
+            cmd = data['cmd']
+            if cmd == 'udpNatTrv':
+                key = data['key']
+                if not key in keyAddr:
+                    # host A
+                    keyAddr[key] = self.addru()
+                else:
+                    # host B
+                    # M->b
+                    data = {'cmd':'udpNatTrv', 'addr':keyAddr[key], 'next': 'send'}
+                    data = json.dumps(data)
+                    self.sendto(data)
+
+                    # M->a
+                    data = {'cmd':'udpNatTrv', 'addr':self.addru(), 'next': 'recv'}
+                    data = json.dumps(data)
+                    self.sendto(data, *keyAddr[key])
+
+            elif cmd == 'udpNatTrv_ready':
+                key = data['key']
+                # (b)->M
+                # M->a
+                data = {'cmd':'udpNatTrv_ready'}
+                data = json.dumps(data)
+                self.sendto(data, *keyAddr.pop(key))
 
 
 def ptyPipe(who, env, **args):
@@ -269,20 +393,20 @@ def ptyPipe(who, env, **args):
             
             def psHandler(ps_net):
                 def rcHandler(rc_net):
-                    _swap(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
+                    _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
                 
                 rc_net = XNet() # reverse client
-                rc_net.rClient(rs_host, rs_port, handler=rcHandler)
+                rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
             
             ps_net = XNet() # positive server
-            ps_net.pServer(ps_host, ps_port, handler=psHandler)
+            ps_net.posivePtyServer(ps_host, ps_port, handler=psHandler)
 
         elif who == 's':
             ps_host = args['host']  # positive server listen host
             ps_port = args['port']  # positive server listen port
 
             pc_net = XNet()
-            pc_net.pClient(ps_host, ps_port)
+            pc_net.posivePtyClient(ps_host, ps_port)
             
         elif who == 't':
             rs_host = args['host']  # reverse server host
@@ -294,7 +418,7 @@ def ptyPipe(who, env, **args):
                 rs_net.rpty(cmd)
 
             rs_net = XNet()
-            rs_net.rServer(rs_host, rs_port, handler=rsHandler)
+            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
             
     elif env == 'sMt':
         pass
@@ -304,7 +428,7 @@ def ptyPipe(who, env, **args):
             rs_port = args['port']  # reverse server port
 
             rc_net = XNet()
-            rc_net.rClient(rs_host, rs_port)
+            rc_net.reversePtyClient(rs_host, rs_port)
         elif who == 't':
             rs_host = args['host']  # reverse server host
             rs_port = args['port']  # reverse server port
@@ -315,7 +439,7 @@ def ptyPipe(who, env, **args):
                 rs_net.rpty(cmd)
 
             rs_net = XNet()
-            rs_net.rServer(rs_host, rs_port, handler=rsHandler)
+            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
     else:
         pass
 
@@ -364,3 +488,104 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
+
+
+import SocketServer
+import multiprocessing
+import slde
+import time
+import proto
+import json
+
+class _TcpServerHandler(SocketServer.BaseRequestHandler):
+    def __init__(self, req, addr, server):
+        self.msgq = server.manager.Queue()
+        self.buf = slde.SldeBuf()
+
+        SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
+        
+
+    def setup(self):
+        #self.server.msgq.put({'cmd': 'add', 'req': self})
+        self.server.reqs[self.client_address] = time.time()
+
+    def handle(self):
+        print self.client_address
+
+        left = self.buf.headerSize
+        while left:
+            data = self.request.recv(left)
+            left = self.buf.write(data)
+
+        if left != None:
+            pr = proto.EqParser()
+            pr.execute('''
+            SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
+            data:SLDE
+            ''')
+            pdata = pr.getVar('data')
+            data = self.buf.decode()
+            data = json.loads(data)
+            cmd = data['cmd']
+            if cmd == 'list':
+                rsp = {'cmd': cmd, 'clients': list()}
+                for addr, info in self.server.reqs.items():
+                    rsp['clients'].append(addr)
+                self.response(rsp)
+
+            
+    def finish(self):
+        #self.server.msgq.put({'cmd': 'del', 'req': self})
+        print 'req cost:', time.time() - self.server.reqs.pop(self.client_address)
+
+    def encode(self, data):
+        self.buf.clear()
+        data = json.dumps(data)
+        return self.buf.encode(data)
+
+    def response(self, data):
+        data = self.encode(data)
+        self.request.sendall(data);
+        
+
+class _ForkingTCPServer(SocketServer.ForkingTCPServer):
+    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+        self.manager = multiprocessing.Manager()
+        self.msgq = self.manager.Queue()
+        self.reqs = self.manager.dict()
+        SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+
+    def serve_forever(self, poll_interval=0.5):
+        proc = multiprocessing.Process(target=self.procMsgHanler)
+        proc.start()
+
+        SocketServer.ForkingTCPServer.serve_forever(self, poll_interval=poll_interval)
+
+        proc.join()
+
+    def procMsgHanler(self):
+        while True:
+            msg = self.msgq.get()
+            cmd = msg['cmd']
+            req = msg['req']
+            if cmd == 'add':
+                self.reqs[req] = time.time()
+            elif cmd == 'del':
+                info = self.reqs.pop(req)
+                print 'proc req cost:', time.time() - info
+            elif cmd == 'list':
+                s = ''
+                for r, info in self.reqs.iteritems():
+                    s += '%s:%d\n' % r.client_address
+                print s
+                #req.msgq.put(s)
+
+        
+def tcpServer(host, port, maxconn=10):
+    _ForkingTCPServer.allow_reuse_address = True
+    _ForkingTCPServer.timeout = 5
+    server = _ForkingTCPServer((host, port), _TcpServerHandler)
+    server.serve_forever()
+
+if __name__ == '__main__':
+    tcpServer('localhost', 2889)
