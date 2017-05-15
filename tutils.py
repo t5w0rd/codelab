@@ -324,6 +324,8 @@ class XNet(Net):
                     pass
                 except KeyboardInterrupt:
                     break
+
+                break
                 
 
             # b->M (M->a)
@@ -345,6 +347,8 @@ class XNet(Net):
             # A
             # (M)->a (or b->a may be drop)
             while True:
+                break
+
                 cmd = 'udpNatTrv_drop'
                 data = {'cmd':cmd}
                 data = json.dumps(data)
