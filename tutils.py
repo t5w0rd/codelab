@@ -305,18 +305,26 @@ class XNet(Net):
         if data['next'] == 'send':
             # B
             # b->A may be drop
-            cmd = 'udpNatTrv_drop'
-            data = {'cmd':cmd}
-            data = json.dumps(data)
-            _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
-            self.sendto(data, *addr)
+            while True:
+                cmd = 'udpNatTrv_drop'
+                data = {'cmd':cmd}
+                data = json.dumps(data)
+                _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
+                self.sendto(data, *addr)
+
+                try:
+                    data = self.recvfrom(timeout=1)
+                    print '@@', self.addru(), data
+                except Exception:
+                    pass
+                
 
             # b->M (M->a)
-            cmd = 'udpNatTrv_ready'
+            '''cmd = 'udpNatTrv_ready'
             data = {'cmd':cmd, 'key':key}
             data = json.dumps(data)
             _log.info('send(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
-            self.sendto(data, host, port)
+            self.sendto(data, host, port)'''
             
             # (a)->B
             data = self.recvfrom()
@@ -342,11 +350,20 @@ class XNet(Net):
             _log.info('recv(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
 
             # a->B  ok
-            cmd = 'udpNatTrv_ready'
-            data = {'cmd':cmd}
-            data = json.dumps(data)
-            _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
-            self.sendto(data, *addr)
+            while True:
+                cmd = 'udpNatTrv_ready'
+                data = {'cmd':cmd}
+                data = json.dumps(data)
+                _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
+                self.sendto(data, *addr)
+
+                try:
+                    data = self.recvfrom(timeout=1)
+                    print '@@', self.addru(), data
+                except Exception:
+                    pass
+            
+
             _log.info('success|key(%s),peer(%s:%d)', key, *addr)
 
 
