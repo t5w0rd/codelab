@@ -322,6 +322,8 @@ class XNet(Net):
                     print '@@', self.addru(), data
                 except Exception:
                     pass
+                except KeyboardInterrupt:
+                    break
                 
 
             # b->M (M->a)
