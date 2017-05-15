@@ -359,7 +359,7 @@ class XNet(Net):
             cmd = data['cmd']
             if cmd == 'udpNatTrv':
                 key = data['key']
-                if not key in keyAddr:
+                if not key in keyAddr or keyAddr[key] == self.addru():
                     # host A
                     _log.info('recv(%s)|key(%s),host A(%s:%d)', cmd, key, *self.addru())
                     keyAddr[key] = self.addru()
