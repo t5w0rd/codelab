@@ -329,11 +329,11 @@ class XNet(Net):
                 
 
             # b->M (M->a)
-            '''cmd = 'udpNatTrv_ready'
+            cmd = 'udpNatTrv_ready'
             data = {'cmd':cmd, 'key':key}
             data = json.dumps(data)
             _log.info('send(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
-            self.sendto(data, host, port)'''
+            self.sendto(data, host, port)
             
             # (a)->B
             data = self.recvfrom()
