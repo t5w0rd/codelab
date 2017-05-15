@@ -127,7 +127,10 @@ class Net:
 
     def recvfrom(self, size=None, timeout=None):
         self._udp.settimeout(timeout)
-        ret, self._addru = self._udp.recvfrom(size or 0xffff)
+        try:
+            ret, self._addru = self._udp.recvfrom(size or 0xffff)
+        except:
+            ret = ''
         self._udp.settimeout(None)
         return ret
 
