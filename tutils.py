@@ -30,7 +30,8 @@ class Net:
         '''return the address of the connection.'''
         self._lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
         self._lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        if hasattr(socket, 'SO_REUSEPORT'):
+            self._lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
         self._lstn.bind((host, port))
         self._lstn.listen(1)
