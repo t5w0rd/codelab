@@ -12,6 +12,7 @@ import fcntl
 import termios
 import array
 import json
+import logging
 
 
 __all__ = ['XNet', 'net', 'daemonize']
@@ -286,8 +287,10 @@ class XNet(Net):
         a->B  ok
         '''
         # a->M or b->M
-        data = {'cmd':'udpNatTrv', 'key':key}
+        cmd = 'udpNatTrv'
+        data = {'cmd':cmd, 'key':key}
         data = json.dumps(data)
+        _log.info('send(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
         self.sendto(data, host, port)
 
         # (M)->a or (M)->b
@@ -296,25 +299,32 @@ class XNet(Net):
         cmd = data['cmd']
         assert(cmd == 'udpNatTrv')
 
-        addr = data['addr']
+        host, port = self.addru()
+        addr = tuple(data['addr'])
+        _log.info('recv(%s)|key(%s),server(%s:%d),peer(%s:%d)', cmd, key, host, port, *addr)
         if data['next'] == 'send':
             # B
             # b->A may be drop
-            data = {'cmd':'udpNatTrv_drop'}
+            cmd = 'udpNatTrv_drop'
+            data = {'cmd':cmd}
             data = json.dumps(data)
+            _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
             self.sendto(data, *addr)
 
             # b->M (M->a)
-            data = {'cmd':'udpNatTrv_ready', 'key':key}
+            cmd = 'udpNatTrv_ready'
+            data = {'cmd':cmd, 'key':key}
             data = json.dumps(data)
+            _log.info('send(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
             self.sendto(data, host, port)
             
             # (a)->B
             data = self.recvfrom()
             data = json.loads(data)
             cmd = data['cmd']
-            assert(cmd == 'udpNatTrv_ready')
-            print '@@@ b ok @@@'
+            assert(cmd == 'udpNatTrv_ready' and self.addru() == addr)
+            _log.info('recv(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
+            _log.info('success|key(%s),peer(%s:%d)', key, *addr)
 
         else:
             # A
@@ -323,16 +333,21 @@ class XNet(Net):
             data = json.loads(data)
             cmd = data['cmd']
             if cmd == 'udpNatTrv_drop':
+                assert(self.addru() == addr)
+                _log.info('recv(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
                 data = self.recvfrom()
                 data = json.loads(data)
                 cmd = data['cmd']
-            assert(cmd == 'udpNatTrv_ready')
+            assert(cmd == 'udpNatTrv_ready' and self.addru() == (host, port))
+            _log.info('recv(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
 
             # a->B  ok
-            data = {'cmd': 'udpNatTrv_ready'}
+            cmd = 'udpNatTrv_ready'
+            data = {'cmd':cmd}
             data = json.dumps(data)
+            _log.info('send(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
             self.sendto(data, *addr)
-            print '@@@ a ok @@@'
+            _log.info('success|key(%s),peer(%s:%d)', key, *addr)
 
 
     def udpNatTrvServer(self, host, port):
@@ -346,25 +361,35 @@ class XNet(Net):
                 key = data['key']
                 if not key in keyAddr:
                     # host A
+                    _log.info('recv(%s)|key(%s),host A(%s:%d)', cmd, key, *self.addru())
                     keyAddr[key] = self.addru()
                 else:
                     # host B
                     # M->b
-                    data = {'cmd':'udpNatTrv', 'addr':keyAddr[key], 'next': 'send'}
+                    _log.info('recv(%s)|key(%s),host B(%s:%d)', cmd, key, *self.addru())
+                    cmd = 'udpNatTrv'
+                    data = {'cmd':cmd, 'addr':keyAddr[key], 'next': 'send'}
                     data = json.dumps(data)
+                    _log.info('send(%s)|key(%s),host B(%s:%d)', cmd, key, *self.addru())
                     self.sendto(data)
 
                     # M->a
-                    data = {'cmd':'udpNatTrv', 'addr':self.addru(), 'next': 'recv'}
+                    data = {'cmd':cmd, 'addr':self.addru(), 'next': 'recv'}
                     data = json.dumps(data)
+                    _log.info('send(%s)|key(%s),host A(%s:%d)', cmd, key, *keyAddr[key])
                     self.sendto(data, *keyAddr[key])
 
             elif cmd == 'udpNatTrv_ready':
+                # host B
                 key = data['key']
+                _log.info('recv(%s)|key(%s),host B(%s:%d)', cmd, key, *self.addru())
+
                 # (b)->M
                 # M->a
-                data = {'cmd':'udpNatTrv_ready'}
+                cmd = 'udpNatTrv_ready'
+                data = {'cmd':cmd}
                 data = json.dumps(data)
+                _log.info('send(%s)|key(%s),host A(%s:%d)', cmd, key, *keyAddr[key])
                 self.sendto(data, *keyAddr.pop(key))
 
 
@@ -586,6 +611,26 @@ def tcpServer(host, port, maxconn=10):
     _ForkingTCPServer.timeout = 5
     server = _ForkingTCPServer((host, port), _TcpServerHandler)
     server.serve_forever()
+
+
+def initLogger():
+    log = logging.getLogger('tutils')
+    log.setLevel(logging.DEBUG)
+    fmt = logging.Formatter(r'[%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s')
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    sh.setLevel(logging.INFO)
+    #sh.setLevel(logging.DEBUG)
+    log.addHandler(sh)
+
+    #fh = logging.FileHandler('%s/log-%s.log' % (workspace, subname))
+    #fh.setFormatter(fmt)
+    #fh.setLevel(logging.INFO)
+    #log.addHandler(fh)
+    return log
+
+_log = initLogger()
 
 if __name__ == '__main__':
     tcpServer('localhost', 2889)

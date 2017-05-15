@@ -3,7 +3,14 @@
 import os, sys, time, re, json, socket
 
 import tutils
+
+host = sys.argv[1]
+port = int(sys.argv[2])
 n = tutils.net()
-n.bindu('0.0.0.0', 0)
-n.udpNatTrv('abc123', 'localhost', 2888)
-n.closeu()
+
+if len(sys.argv) == 4:
+    n.udpNatTrvServer(host, port)
+else:
+    n.bindu('0.0.0.0', 0)
+    n.udpNatTrv('abc123', host, port)
+    n.closeu()
