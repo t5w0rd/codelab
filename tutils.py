@@ -116,7 +116,8 @@ class Net:
             self._udp.close()
         self._udp = socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
         self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        if hasattr(socket, 'SO_REUSEPORT'):
+            self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self._udp.bind((host, port))
 
     def sendto(self, s, host=None, port=None):
