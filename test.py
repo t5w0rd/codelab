@@ -11,6 +11,6 @@ n = tutils.net()
 if len(sys.argv) == 4:
     n.udpNatTrvServer(host, port)
 else:
-    n.bindu('0.0.0.0', 0)
+    n.bindu('0.0.0.0', 2889)
     n.udpNatTrv('abc123', host, port)
     n.closeu()
