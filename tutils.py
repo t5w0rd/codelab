@@ -13,6 +13,8 @@ import termios
 import array
 import json
 import logging
+import multiprocessing
+import re
 
 
 __all__ = ['XNet', 'net', 'daemonize']
@@ -545,14 +547,29 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
+    
+def multijobs(target, args, workers=None):
+    if not workers:
+        workers = multiprocessing.cpu_count()
+    jobs = len(args)
+    workers = min(jobs, workers)
+    pool = multiprocessing.Pool()
+    ret = pool.map(target, args)
+    pool.close()
+    pool.join()
+    return ret
 
+try:
+    import walkdir
+    def searchFile(where, match):
+        pass
+        
+except ImportError:
+    pass
 
 import SocketServer
-import multiprocessing
 import slde
-import time
 import proto
-import json
 
 class _TcpServerHandler(SocketServer.BaseRequestHandler):
     def __init__(self, req, addr, server):
