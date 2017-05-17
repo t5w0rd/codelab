@@ -3,6 +3,9 @@
 import os
 from collections import deque
 
+def join(parent, child):
+    return '%s/%s' % (parent != '/' and parent or '', child)
+
 def _walk_dfs(top, onerror=None, followlinks=False):
     isdir = os.path.isdir
     islink = os.path.islink
@@ -31,7 +34,7 @@ def _walk_dfs(top, onerror=None, followlinks=False):
                 dirs.append(name)
             else:
                 nondirs.append(name)
-        yield top, dirs, nondirs
+        yield 0, top, dirs, nondirs
         
         for name in reversed(dirs):
             path = '%s/%s' % (top, name)
@@ -44,14 +47,21 @@ def _walk_bfs(top, onerror=None, followlinks=False):
     listdir = os.listdir
     abspath = os.path.abspath
     error = os.error
+    deep = 0
 
     lst = deque()
     if isdir(top):
         top = abspath(top)
+        lst.append(1)
         lst.append(top)
 
-    while len(lst):
+    while len(lst) > 1:
         top = lst.popleft()
+        if type(top) == int:
+            deep = top
+            lst.append(deep + 1)
+            top = lst.popleft()
+
         try:
             names = listdir(top)
         except error, err:
@@ -66,7 +76,7 @@ def _walk_bfs(top, onerror=None, followlinks=False):
                 dirs.append(name)
             else:
                 nondirs.append(name)
-        yield top, dirs, nondirs
+        yield deep, top, dirs, nondirs
         
         for name in dirs:
             path = '%s/%s' % (top, name)
@@ -75,27 +85,17 @@ def _walk_bfs(top, onerror=None, followlinks=False):
         
 def walkdir(top, onWalk, mode='dfs', followlinks=False):
     '''mode: 'dfs' or 'bfs'.
-    onWalk(parent, child, isDir)'''
+    onWalk like: func(deep, parent, child, isDir)'''
     walk = (mode == 'dfs' and _walk_dfs) or _walk_bfs
-    for path, dirs, files in walk(top, followlinks=followlinks):
+    for deep, path, dirs, files in walk(top, followlinks=followlinks):
         for d in dirs:
-            onWalk(path, d, True)
+            onWalk(deep, path, d, True)
         for f in files:
-            onWalk(path, f, False)
+            onWalk(deep, path, f, False)
         
-def walkdir(top, onWalk, mode='dfs', followlinks=False):
-    '''mode: 'dfs' or 'bfs'.
-    onWalk(parent, child, isDir)'''
-    walk = (mode == 'dfs' and _walk_dfs) or _walk_bfs
-    for path, dirs, files in walk(top, followlinks=followlinks):
-        for d in dirs:
-            onWalk(path, d, True)
-        for f in files:
-            onWalk(path, f, False)
-
-def what(parent, child, isDir):
+def what(deep, parent, child, isDir):
     #print os.path.abspath('%s/%s' % (parent, child))
-    print '%s/%s' % (parent, child)
+    print '%d %s/%s' % (deep, parent, child)
     #print '%s' % (parent,)
 
 def main():

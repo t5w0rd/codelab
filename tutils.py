@@ -553,19 +553,11 @@ def multijobs(target, args, workers=None):
         workers = multiprocessing.cpu_count()
     jobs = len(args)
     workers = min(jobs, workers)
-    pool = multiprocessing.Pool()
+    pool = multiprocessing.Pool(processes=workers)
     ret = pool.map(target, args)
     pool.close()
     pool.join()
     return ret
-
-try:
-    import walkdir
-    def searchFile(where, match):
-        pass
-        
-except ImportError:
-    pass
 
 import SocketServer
 import slde
