@@ -6,11 +6,14 @@ import tutils
 
 host = sys.argv[1]
 port = int(sys.argv[2])
-n = tutils.net()
 
-if len(sys.argv) == 4:
-    n.udpNatTrvServer(host, port)
-else:
-    n.bindu('0.0.0.0', 0)
-    n.udpNatTrv('abc123', host, port)
-    n.closeu()
+net = tutils.net()
+net.connect(host, port)
+
+data = 'GET /app/v1/market/stock_rank?mt=hs&rt=7&num=2 HTTP/1.1\r\nHost: 139.196.228.231:18888\r\nAccept: */*\r\nContent-type: application/json;charset=UTF-8\r\n\r\n'
+net.send(data)
+
+data = net.recv()
+print data
+
+net.close()

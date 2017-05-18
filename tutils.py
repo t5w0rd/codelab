@@ -52,8 +52,8 @@ class Net:
         '''send a string or iterable strings; return the number of bytes sent.'''
         c = 0
         if isinstance(s, str):
-            n = self._tcp.sendall(s)
-            c += n
+            self._tcp.sendall(s)
+            c += len(s)
         elif hasattr(s, '__iter__'):
             c = 0
             for seg in s:
@@ -63,34 +63,32 @@ class Net:
         return c
 
     def recv(self, size=None, timeout=None):
-        '''return bytes received.'''
-        self._tcp.settimeout(timeout)
+        if size == None and timeout == None:
+            return self._tcp.recv(0xffff)
 
-        ret = None
-        while size == None or ret == None or len(ret)< size:
-            if size and size > 0:
-                if ret == None:
-                    n = size
-                else:
-                    n = size - len(ret)
-            else:
+        self._tcp.settimeout(timeout)
+        ret = ''
+        while ret == '' or size == None or len(ret) < size:
+            if not size:
                 n = 0xffff
+            else:
+                n = size - len(ret)
 
             try:
-                s = self._tcp.recv(size and (size - len(ret))or 0xffff)
+                s = self._tcp.recv(n)
             except socket.timeout:
                 break
 
             if not s:
                 break
             
-            if not ret:
-                ret = s
-            else:
-                ret += s
+            ret += s
 
         self._tcp.settimeout(None)
         return ret
+
+    def recv_(self, size=None, timeout=None):
+        '''return bytes received.'''
 
     def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
         '''connect remote host'''
