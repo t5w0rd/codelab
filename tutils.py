@@ -87,9 +87,6 @@ class Net:
         self._tcp.settimeout(None)
         return ret
 
-    def recv_(self, size=None, timeout=None):
-        '''return bytes received.'''
-
     def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
         '''connect remote host'''
         
