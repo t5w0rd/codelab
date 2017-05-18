@@ -17,12 +17,12 @@ import multiprocessing
 import re
 
 
-__all__ = ['XNet', 'net', 'daemonize']
+__all__ = ['XNet', 'net', 'daemonize', 'multijobs', 'initLogger', 'StopWatch']
 
 
 class Net:
     _lstn = None
-    _tcp, _addr = None, None
+    _tcp = None, None
     _udp = None  #socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
 
     def __init__(self):
@@ -36,17 +36,33 @@ class Net:
             self._lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
         self._lstn.bind((host, port))
-        self._lstn.listen(1)
+        self._lstn.listen(5)
         if self._tcp:
             self._tcp.close()
-        self._tcp, self._addr = self._lstn.accept()
+        self._tcp, addr = self._lstn.accept()
         self._lstn.close()
         self._lstn = None
 
-    def attach(self, tcp, addr=None):
+    def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
+        '''connect remote host'''
+        
+        tcp = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+        tcp.bind((lhost, lport))
         if self._tcp:
             self._tcp.close()
-        self._tcp, self._addr = tcp, addr
+        self._tcp = tcp
+        self._tcp.connect((host, port))
+
+    def laddr():
+        return self._tcp.getsockname()
+
+    def raddr():
+        return self._tcp.getpeername()
+
+    def attach(self, tcp):
+        if self._tcp:
+            self._tcp.close()
+        self._tcp = tcp
 
     def send(self, s):
         '''send a string or iterable strings; return the number of bytes sent.'''
@@ -88,27 +104,14 @@ class Net:
         self._tcp.settimeout(None)
         return ret
 
-    def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
-        '''connect remote host'''
-        
-        tcp = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
-        tcp.bind((lhost, lport))
-        if self._tcp:
-            self._tcp.close()
-        self._tcp, self._addr = tcp, (host, port)
-        self._tcp.connect((host, port))
-
     def close(self):
         '''close the tcp socket'''
         self._tcp.close()
-        self._tcp, self._addr = None, None
+        self._tcp = None
 
     def fileno(self):
         return self._tcp.fileno()
 
-    def addr(self):
-        return self._addr
-        
     def bindu(self, host, port):
         if self._udp:
             self._udp.close()
@@ -117,6 +120,11 @@ class Net:
         if hasattr(socket, 'SO_REUSEPORT'):
             self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self._udp.bind((host, port))
+
+    def attachu(self, udp, addr=None):
+        if self._udp:
+            self._udp.close()
+        self._udp, self._addru = udp, addr
 
     def sendto(self, s, host=None, port=None):
         if host == None or port == None:
@@ -237,7 +245,7 @@ def _copyLoop(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT
 
 
 def _rpty(net):
-    #print 'remote connection: %s:%d' % net.addr()
+    #print 'remote connection: %s:%d' % net.raddr()
     net.rpty('bash')
 
 def _lpty(net):
@@ -469,7 +477,7 @@ def ptyPipe(who, env, **args):
             cmd = args['cmd']
     
             def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.addr()
+                #print 'remote connection: %s:%d' % rs_net.raddr()
                 rs_net.rpty(cmd)
 
             rs_net = XNet()
@@ -490,7 +498,7 @@ def ptyPipe(who, env, **args):
             cmd = args['cmd']
             
             def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.addr()
+                #print 'remote connection: %s:%d' % rs_net.raddr()
                 rs_net.rpty(cmd)
 
             rs_net = XNet()
