@@ -67,22 +67,23 @@ class Net:
             return self._tcp.recv(0xffff)
 
         self._tcp.settimeout(timeout)
-        ret = ''
-        while ret == '' or size == None or len(ret) < size:
-            if not size:
-                n = 0xffff
-            else:
-                n = size - len(ret)
-
+        ret = None
+        while ret == '' or size == None or ret == None or len(ret) < size:
+            n = (not size and 0xffff) or (size - (ret != None and len(ret) or 0))
             try:
                 s = self._tcp.recv(n)
             except socket.timeout:
                 break
 
             if not s:
+                if ret == None:
+                    ret = s
                 break
             
-            ret += s
+            if ret == None:
+                ret = s
+            else:
+                ret += s
 
         self._tcp.settimeout(None)
         return ret
@@ -554,99 +555,102 @@ def multijobs(target, args, workers=None):
     pool.join()
     return ret
 
-import SocketServer
-import slde
-import proto
+try:
+    import SocketServer
+    import slde
+    import proto
 
-class _TcpServerHandler(SocketServer.BaseRequestHandler):
-    def __init__(self, req, addr, server):
-        self.msgq = server.manager.Queue()
-        self.buf = slde.SldeBuf()
+    class _TcpServerHandler(SocketServer.BaseRequestHandler):
+        def __init__(self, req, addr, server):
+            self.msgq = server.manager.Queue()
+            self.buf = slde.SldeBuf()
 
-        SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
-        
-
-    def setup(self):
-        #self.server.msgq.put({'cmd': 'add', 'req': self})
-        self.server.reqs[self.client_address] = time.time()
-
-    def handle(self):
-        print self.client_address
-
-        left = self.buf.headerSize
-        while left:
-            data = self.request.recv(left)
-            left = self.buf.write(data)
-
-        if left != None:
-            pr = proto.EqParser()
-            pr.execute('''
-            SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
-            data:SLDE
-            ''')
-            pdata = pr.getVar('data')
-            data = self.buf.decode()
-            data = json.loads(data)
-            cmd = data['cmd']
-            if cmd == 'list':
-                rsp = {'cmd': cmd, 'clients': list()}
-                for addr, info in self.server.reqs.items():
-                    rsp['clients'].append(addr)
-                self.response(rsp)
-
+            SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
             
-    def finish(self):
-        #self.server.msgq.put({'cmd': 'del', 'req': self})
-        print 'req cost:', time.time() - self.server.reqs.pop(self.client_address)
 
-    def encode(self, data):
-        self.buf.clear()
-        data = json.dumps(data)
-        return self.buf.encode(data)
+        def setup(self):
+            #self.server.msgq.put({'cmd': 'add', 'req': self})
+            self.server.reqs[self.client_address] = time.time()
 
-    def response(self, data):
-        data = self.encode(data)
-        self.request.sendall(data);
-        
+        def handle(self):
+            print self.client_address
 
-class _ForkingTCPServer(SocketServer.ForkingTCPServer):
-    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
-        self.manager = multiprocessing.Manager()
-        self.msgq = self.manager.Queue()
-        self.reqs = self.manager.dict()
-        SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+            left = self.buf.headerSize
+            while left:
+                data = self.request.recv(left)
+                left = self.buf.write(data)
 
-    def serve_forever(self, poll_interval=0.5):
-        proc = multiprocessing.Process(target=self.procMsgHanler)
-        proc.start()
+            if left != None:
+                pr = proto.EqParser()
+                pr.execute('''
+                SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
+                data:SLDE
+                ''')
+                pdata = pr.getVar('data')
+                data = self.buf.decode()
+                data = json.loads(data)
+                cmd = data['cmd']
+                if cmd == 'list':
+                    rsp = {'cmd': cmd, 'clients': list()}
+                    for addr, info in self.server.reqs.items():
+                        rsp['clients'].append(addr)
+                    self.response(rsp)
 
-        SocketServer.ForkingTCPServer.serve_forever(self, poll_interval=poll_interval)
+                
+        def finish(self):
+            #self.server.msgq.put({'cmd': 'del', 'req': self})
+            print 'req cost:', time.time() - self.server.reqs.pop(self.client_address)
 
-        proc.join()
+        def encode(self, data):
+            self.buf.clear()
+            data = json.dumps(data)
+            return self.buf.encode(data)
 
-    def procMsgHanler(self):
-        while True:
-            msg = self.msgq.get()
-            cmd = msg['cmd']
-            req = msg['req']
-            if cmd == 'add':
-                self.reqs[req] = time.time()
-            elif cmd == 'del':
-                info = self.reqs.pop(req)
-                print 'proc req cost:', time.time() - info
-            elif cmd == 'list':
-                s = ''
-                for r, info in self.reqs.iteritems():
-                    s += '%s:%d\n' % r.client_address
-                print s
-                #req.msgq.put(s)
+        def response(self, data):
+            data = self.encode(data)
+            self.request.sendall(data);
+            
 
-        
-def tcpServer(host, port, maxconn=10):
-    _ForkingTCPServer.allow_reuse_address = True
-    _ForkingTCPServer.timeout = 5
-    server = _ForkingTCPServer((host, port), _TcpServerHandler)
-    server.serve_forever()
+    class _ForkingTCPServer(SocketServer.ForkingTCPServer):
+        def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+            self.manager = multiprocessing.Manager()
+            self.msgq = self.manager.Queue()
+            self.reqs = self.manager.dict()
+            SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+
+        def serve_forever(self, poll_interval=0.5):
+            proc = multiprocessing.Process(target=self.procMsgHanler)
+            proc.start()
+
+            SocketServer.ForkingTCPServer.serve_forever(self, poll_interval=poll_interval)
+
+            proc.join()
+
+        def procMsgHanler(self):
+            while True:
+                msg = self.msgq.get()
+                cmd = msg['cmd']
+                req = msg['req']
+                if cmd == 'add':
+                    self.reqs[req] = time.time()
+                elif cmd == 'del':
+                    info = self.reqs.pop(req)
+                    print 'proc req cost:', time.time() - info
+                elif cmd == 'list':
+                    s = ''
+                    for r, info in self.reqs.iteritems():
+                        s += '%s:%d\n' % r.client_address
+                    print s
+                    #req.msgq.put(s)
+
+    def tcpServer(host, port, maxconn=10):
+        _ForkingTCPServer.allow_reuse_address = True
+        _ForkingTCPServer.timeout = 5
+        server = _ForkingTCPServer((host, port), _TcpServerHandler)
+        server.serve_forever()
+
+except:
+    pass
 
 
 def initLogger():
@@ -667,6 +671,30 @@ def initLogger():
     return log
 
 _log = initLogger()
+
+class StopWatch:
+    def __init__(self, mode='reset'):
+        self._tm = time.time()
+        self._mode = mode
+        self._logs = {}
+
+    def tell(self):
+        return time.time() - self._tm
+
+    def peek(self):
+        now = time.time()
+        ret = now - self._tm
+        self._tm = now
+        return ret
+
+    def log(self, key):
+        if self._mode == 'reset':
+            self._logs[key] = self.reset()
+        else:
+            self._logs[key] = self.peek()
+
+    def logs(self):
+        return self._logs
 
 if __name__ == '__main__':
     tcpServer('localhost', 2889)
