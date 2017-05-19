@@ -13,14 +13,16 @@ import termios
 import array
 import json
 import logging
+import multiprocessing
+import re
 
 
-__all__ = ['XNet', 'net', 'daemonize']
+__all__ = ['XNet', 'net', 'daemonize', 'multijobs', 'initLogger', 'StopWatch']
 
 
 class Net:
     _lstn = None
-    _tcp, _addr = None, None
+    _tcp = None
     _udp = None  #socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
 
     def __init__(self):
@@ -34,24 +36,40 @@ class Net:
             self._lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
         self._lstn.bind((host, port))
-        self._lstn.listen(1)
+        self._lstn.listen(5)
         if self._tcp:
             self._tcp.close()
-        self._tcp, self._addr = self._lstn.accept()
+        self._tcp, addr = self._lstn.accept()
         self._lstn.close()
         self._lstn = None
 
-    def attach(self, tcp, addr=None):
+    def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
+        '''connect remote host'''
+        
+        tcp = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+        tcp.bind((lhost, lport))
         if self._tcp:
             self._tcp.close()
-        self._tcp, self._addr = tcp, addr
+        self._tcp = tcp
+        self._tcp.connect((host, port))
+
+    def laddr():
+        return self._tcp.getsockname()
+
+    def raddr():
+        return self._tcp.getpeername()
+
+    def attach(self, tcp):
+        if self._tcp:
+            self._tcp.close()
+        self._tcp = tcp
 
     def send(self, s):
         '''send a string or iterable strings; return the number of bytes sent.'''
         c = 0
         if isinstance(s, str):
-            n = self._tcp.sendall(s)
-            c += n
+            self._tcp.sendall(s)
+            c += len(s)
         elif hasattr(s, '__iter__'):
             c = 0
             for seg in s:
@@ -61,28 +79,24 @@ class Net:
         return c
 
     def recv(self, size=None, timeout=None):
-        '''return bytes received.'''
+        if size == None and timeout == None:
+            return self._tcp.recv(0xffff)
+
         self._tcp.settimeout(timeout)
-
         ret = None
-        while size == None or ret == None or len(ret)< size:
-            if size and size > 0:
-                if ret == None:
-                    n = size
-                else:
-                    n = size - len(ret)
-            else:
-                n = 0xffff
-
+        while ret == '' or size == None or ret == None or len(ret) < size:
+            n = (not size and 0xffff) or (size - (ret != None and len(ret) or 0))
             try:
-                s = self._tcp.recv(size and (size - len(ret))or 0xffff)
+                s = self._tcp.recv(n)
             except socket.timeout:
                 break
 
             if not s:
+                if ret == None:
+                    ret = s
                 break
             
-            if not ret:
+            if ret == None:
                 ret = s
             else:
                 ret += s
@@ -90,27 +104,14 @@ class Net:
         self._tcp.settimeout(None)
         return ret
 
-    def connect(self, host, port, lhost = '0.0.0.0', lport = 0):
-        '''connect remote host'''
-        
-        tcp = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
-        tcp.bind((lhost, lport))
-        if self._tcp:
-            self._tcp.close()
-        self._tcp, self._addr = tcp, (host, port)
-        self._tcp.connect((host, port))
-
     def close(self):
         '''close the tcp socket'''
         self._tcp.close()
-        self._tcp, self._addr = None, None
+        self._tcp = None
 
     def fileno(self):
         return self._tcp.fileno()
 
-    def addr(self):
-        return self._addr
-        
     def bindu(self, host, port):
         if self._udp:
             self._udp.close()
@@ -119,6 +120,11 @@ class Net:
         if hasattr(socket, 'SO_REUSEPORT'):
             self._udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self._udp.bind((host, port))
+
+    def attachu(self, udp, addr=None):
+        if self._udp:
+            self._udp.close()
+        self._udp, self._addru = udp, addr
 
     def sendto(self, s, host=None, port=None):
         if host == None or port == None:
@@ -142,6 +148,39 @@ class Net:
 
     def addru(self):
         return self._addru
+
+    def sendf(self, fp, offset=None, size=None):
+        if offset is not None:
+            fp.seek(offset, os.SEEK_SET)
+
+        sent = 0
+        while size is None or sent < size:
+            n = (size is not None and size - sent) or 512
+            s = fp.read(n)
+            if not s:
+                break
+
+            n_ = self._tcp.send(s)
+            sent += n_
+            if n_ != len(s):
+                fp.seek(n_ - len(s), os.SEEK_CUR)
+
+    def recvf(self, fp, size=None, timeout=None):
+        '''if size is None, recv until empty data'''
+        self._tcp.settimeout(timeout)
+        recved = 0
+        while size is None or recved < size:
+            n = (size is not None and size - recved) or 0xffff
+            s = self._tcp.recv(n)
+            if not s:
+                break
+
+            n_ = fp.write(s)
+            while n_ != len(s):
+                s = s[n_:]
+                n_ = fp.write(s)
+
+        self._tcp.settimeout(timeout)
 
     def rpty(self, cmd, close_wait=0):
         '''remote execute, I/O from tcp.
@@ -239,7 +278,7 @@ def _copyLoop(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT
 
 
 def _rpty(net):
-    #print 'remote connection: %s:%d' % net.addr()
+    #print 'remote connection: %s:%d' % net.raddr()
     net.rpty('bash')
 
 def _lpty(net):
@@ -249,14 +288,14 @@ class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def posivePtyServer(self, host, port, handler=_rpty):
+    def positivePtyServer(self, host, port, handler=_rpty):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
             handler(self)
             self.close()
 
-    def posivePtyClient(self, host, port, handler=_lpty):
+    def positivePtyClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.connect(host, port)
         handler(self)
@@ -425,7 +464,53 @@ class XNet(Net):
                 self.sendto(data, *keyAddr.pop(key))
 
 
-def ptyPipe(who, env, **args):
+def _ptyPipe_ps2rc(args):
+    '''positive server <-> reverse client.'''
+    ps_host = args['host']  # positive server listen host
+    ps_port = args['port']  # positive server listen port
+    rs_host = args['rhost']  # reverse server host
+    rs_port = args['rport']  # reverse server port
+    
+    def psHandler(ps_net):
+        def rcHandler(rc_net):
+            _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
+        
+        rc_net = XNet()  # reverse client
+        rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
+    
+    ps_net = XNet()  # positive server
+    ps_net.positivePtyServer(ps_host, ps_port, handler=psHandler)
+
+def _ptyPipe_pc(args):
+    '''positive client.'''
+    ps_host = args['rhost']  # positive server listen host
+    ps_port = args['rport']  # positive server listen port
+
+    pc_net = XNet()
+    pc_net.positivePtyClient(ps_host, ps_port)
+
+def _ptyPipe_rs(args):
+    '''reverse server.'''
+    rs_host = args['rhost']  # reverse server host
+    rs_port = args['rport']  # reverse server port
+    cmd = args['cmd']
+
+    def rsHandler(rs_net):
+        #print 'remote connection: %s:%d' % rs_net.raddr()
+        rs_net.rpty(cmd)
+
+    rs_net = XNet()
+    rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
+
+def _ptyPipe_rc(args):
+    '''reverse client.'''
+    rs_host = args['host']  # reverse server host
+    rs_port = args['port']  # reverse server port
+
+    rc_net = XNet()
+    rc_net.reversePtyClient(rs_host, rs_port)
+
+def ptyPipe(env, who, **args):
     '''who:
     M: middle host with public ip;
     s: source host with internal ip;
@@ -441,65 +526,22 @@ def ptyPipe(who, env, **args):
     sMt: s!t s>M M=t
     '''
 
-    if env == 'stM' or env == 'tsM':
+    if env == 'tsM':
         if who == 'M':
-            ps_host = args['host']  # positive server listen host
-            ps_port = args['port']  # positive server listen port
-            rs_host = args['rhost']  # reverse server host
-            rs_port = args['rport']  # reverse server port
-            
-            def psHandler(ps_net):
-                def rcHandler(rc_net):
-                    _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
-                
-                rc_net = XNet() # reverse client
-                rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
-            
-            ps_net = XNet() # positive server
-            ps_net.posivePtyServer(ps_host, ps_port, handler=psHandler)
-
+            _ptyPipe_ps2rc(args)
         elif who == 's':
-            ps_host = args['host']  # positive server listen host
-            ps_port = args['port']  # positive server listen port
-
-            pc_net = XNet()
-            pc_net.posivePtyClient(ps_host, ps_port)
-            
+            _ptyPipe_pc(args)
         elif who == 't':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-            cmd = args['cmd']
-    
-            def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.addr()
-                rs_net.rpty(cmd)
-
-            rs_net = XNet()
-            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
-            
+            _ptyPipe_rs(args)
     elif env == 'sMt':
-        pass
+        raise Exception('Not supported')
     elif env == 'tS':
         if who == 'S':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-
-            rc_net = XNet()
-            rc_net.reversePtyClient(rs_host, rs_port)
+            _ptyPipe_rc(args)
         elif who == 't':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-            cmd = args['cmd']
-            
-            def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.addr()
-                rs_net.rpty(cmd)
-
-            rs_net = XNet()
-            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
+            _ptyPipe_rs(args)
     else:
-        pass
-
+        raise Exception('Not supported')
 
 _net = XNet()
 def net():
@@ -545,104 +587,114 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
+    
+def multijobs(target, args, workers=None):
+    if not workers:
+        workers = multiprocessing.cpu_count()
+    jobs = len(args)
+    workers = min(jobs, workers)
+    pool = multiprocessing.Pool(processes=workers)
+    ret = pool.map(target, args)
+    pool.close()
+    pool.join()
+    return ret
 
+try:
+    import SocketServer
+    import slde
+    import proto
 
-import SocketServer
-import multiprocessing
-import slde
-import time
-import proto
-import json
+    class _TcpServerHandler(SocketServer.BaseRequestHandler):
+        def __init__(self, req, addr, server):
+            self.msgq = server.manager.Queue()
+            self.buf = slde.SldeBuf()
 
-class _TcpServerHandler(SocketServer.BaseRequestHandler):
-    def __init__(self, req, addr, server):
-        self.msgq = server.manager.Queue()
-        self.buf = slde.SldeBuf()
-
-        SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
-        
-
-    def setup(self):
-        #self.server.msgq.put({'cmd': 'add', 'req': self})
-        self.server.reqs[self.client_address] = time.time()
-
-    def handle(self):
-        print self.client_address
-
-        left = self.buf.headerSize
-        while left:
-            data = self.request.recv(left)
-            left = self.buf.write(data)
-
-        if left != None:
-            pr = proto.EqParser()
-            pr.execute('''
-            SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
-            data:SLDE
-            ''')
-            pdata = pr.getVar('data')
-            data = self.buf.decode()
-            data = json.loads(data)
-            cmd = data['cmd']
-            if cmd == 'list':
-                rsp = {'cmd': cmd, 'clients': list()}
-                for addr, info in self.server.reqs.items():
-                    rsp['clients'].append(addr)
-                self.response(rsp)
-
+            SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
             
-    def finish(self):
-        #self.server.msgq.put({'cmd': 'del', 'req': self})
-        print 'req cost:', time.time() - self.server.reqs.pop(self.client_address)
 
-    def encode(self, data):
-        self.buf.clear()
-        data = json.dumps(data)
-        return self.buf.encode(data)
+        def setup(self):
+            #self.server.msgq.put({'cmd': 'add', 'req': self})
+            self.server.reqs[self.client_address] = time.time()
 
-    def response(self, data):
-        data = self.encode(data)
-        self.request.sendall(data);
-        
+        def handle(self):
+            print self.client_address
 
-class _ForkingTCPServer(SocketServer.ForkingTCPServer):
-    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
-        self.manager = multiprocessing.Manager()
-        self.msgq = self.manager.Queue()
-        self.reqs = self.manager.dict()
-        SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+            left = self.buf.headerSize
+            while left:
+                data = self.request.recv(left)
+                left = self.buf.write(data)
 
-    def serve_forever(self, poll_interval=0.5):
-        proc = multiprocessing.Process(target=self.procMsgHanler)
-        proc.start()
+            if left != None:
+                pr = proto.EqParser()
+                pr.execute('''
+                SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
+                data:SLDE
+                ''')
+                pdata = pr.getVar('data')
+                data = self.buf.decode()
+                data = json.loads(data)
+                cmd = data['cmd']
+                if cmd == 'list':
+                    rsp = {'cmd': cmd, 'clients': list()}
+                    for addr, info in self.server.reqs.items():
+                        rsp['clients'].append(addr)
+                    self.response(rsp)
 
-        SocketServer.ForkingTCPServer.serve_forever(self, poll_interval=poll_interval)
+                
+        def finish(self):
+            #self.server.msgq.put({'cmd': 'del', 'req': self})
+            print 'req cost:', time.time() - self.server.reqs.pop(self.client_address)
 
-        proc.join()
+        def encode(self, data):
+            self.buf.clear()
+            data = json.dumps(data)
+            return self.buf.encode(data)
 
-    def procMsgHanler(self):
-        while True:
-            msg = self.msgq.get()
-            cmd = msg['cmd']
-            req = msg['req']
-            if cmd == 'add':
-                self.reqs[req] = time.time()
-            elif cmd == 'del':
-                info = self.reqs.pop(req)
-                print 'proc req cost:', time.time() - info
-            elif cmd == 'list':
-                s = ''
-                for r, info in self.reqs.iteritems():
-                    s += '%s:%d\n' % r.client_address
-                print s
-                #req.msgq.put(s)
+        def response(self, data):
+            data = self.encode(data)
+            self.request.sendall(data);
+            
 
-        
-def tcpServer(host, port, maxconn=10):
-    _ForkingTCPServer.allow_reuse_address = True
-    _ForkingTCPServer.timeout = 5
-    server = _ForkingTCPServer((host, port), _TcpServerHandler)
-    server.serve_forever()
+    class _ForkingTCPServer(SocketServer.ForkingTCPServer):
+        def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+            self.manager = multiprocessing.Manager()
+            self.msgq = self.manager.Queue()
+            self.reqs = self.manager.dict()
+            SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+
+        def serve_forever(self, poll_interval=0.5):
+            proc = multiprocessing.Process(target=self.procMsgHanler)
+            proc.start()
+
+            SocketServer.ForkingTCPServer.serve_forever(self, poll_interval=poll_interval)
+
+            proc.join()
+
+        def procMsgHanler(self):
+            while True:
+                msg = self.msgq.get()
+                cmd = msg['cmd']
+                req = msg['req']
+                if cmd == 'add':
+                    self.reqs[req] = time.time()
+                elif cmd == 'del':
+                    info = self.reqs.pop(req)
+                    print 'proc req cost:', time.time() - info
+                elif cmd == 'list':
+                    s = ''
+                    for r, info in self.reqs.iteritems():
+                        s += '%s:%d\n' % r.client_address
+                    print s
+                    #req.msgq.put(s)
+
+    def tcpServer(host, port, maxconn=10):
+        _ForkingTCPServer.allow_reuse_address = True
+        _ForkingTCPServer.timeout = 5
+        server = _ForkingTCPServer((host, port), _TcpServerHandler)
+        server.serve_forever()
+
+except:
+    pass
 
 
 def initLogger():
@@ -664,5 +716,76 @@ def initLogger():
 
 _log = initLogger()
 
+class StopWatch:
+    def __init__(self, mode='reset'):
+        self._tm = time.time()
+        self._mode = mode
+        self._logs = {}
+
+    def tell(self):
+        return time.time() - self._tm
+
+    def peek(self):
+        now = time.time()
+        ret = now - self._tm
+        self._tm = now
+        return ret
+
+    def log(self, key):
+        if self._mode == 'reset':
+            self._logs[key] = self.reset()
+        else:
+            self._logs[key] = self.peek()
+
+    def logs(self):
+        return self._logs
+
+
 if __name__ == '__main__':
-    tcpServer('localhost', 2889)
+    from optparse import OptionParser
+
+    op = OptionParser()
+    op.set_usage('''%prog <ENV> <WHO> [options]\n  ENV\tEnvironment: tsM/tS\n  WHO\tWho: t/s/M/S''')
+
+    #op.add_option('-e', '--env', action='store', dest='env', type=str, help="Environment, must be set. (tsM/tS)")
+    #op.add_option('-w', '--who', action='store', dest='who', type=str, help="Who, must be set. (s/t/M/S)")
+    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
+    op.add_option('-l', '--local', action='store', dest='laddr', type=str, help="Address of local host, like 0.0.0.0:1234")
+    op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help="Address of remote host, like 192.168.1.101:1234")
+
+    (opts, args) = op.parse_args()
+
+    if len(sys.argv) < 4 or (not opts.laddr and not opts.raddr) or sys.argv[1] not in ('tsM', 'tS') or sys.argv[2] not in ('t', 's', 'M', 'S'):
+        op.print_help()
+        sys.exit(1)
+
+    try:
+        env = sys.argv[1]
+        who = sys.argv[2]
+
+        if opts.laddr:
+            host, port = opts.laddr.split(':')
+            port = int(port)
+        else:
+            host, port = None, None
+
+        if opts.raddr:
+            rhost, rport = opts.raddr.split(':')
+            rport = int(rport)
+        else:
+            rhost, rport = None, None
+
+        daemon = opts.daemon
+
+    except:
+        op.print_help()
+        sys.exit(1)
+
+    if daemon:
+        daemonize()
+
+    if 'HOME' in os.environ:
+        os.chdir(os.environ['HOME'])
+
+    ptyPipe(env, who, host=host, port=port, rhost=rhost, rport=rport)
+

@@ -1,16 +1,102 @@
 #!/usr/bin/env python
 
 import os
+from collections import deque
 
-def walkdir(top, onWalk, followlinks = False):
-    for path, dirs, files in os.walk(top, followlinks = followlinks):
+def join(parent, child):
+    return '%s/%s' % (parent != '/' and parent or '', child)
+
+def _walk_dfs(top, onerror=None, followlinks=False):
+    isdir = os.path.isdir
+    islink = os.path.islink
+    listdir = os.listdir
+    abspath = os.path.abspath
+    error = os.error
+
+    lst = list()
+    if isdir(top):
+        top = abspath(top)
+        lst.append(top)
+
+    while len(lst):
+        top = lst.pop()
+        try:
+            names = listdir(top)
+        except error, err:
+            if onerror is not None:
+                onerror(err)
+            continue
+        
+        dirs, nondirs = [], []
+        for name in names:
+            path = '%s/%s' % (top, name)
+            if isdir(path):
+                dirs.append(name)
+            else:
+                nondirs.append(name)
+        yield 0, top, dirs, nondirs
+        
+        for name in reversed(dirs):
+            path = '%s/%s' % (top, name)
+            if not islink(path) or followlinks:
+                lst.append(path)
+
+def _walk_bfs(top, onerror=None, followlinks=False):
+    isdir = os.path.isdir
+    islink = os.path.islink
+    listdir = os.listdir
+    abspath = os.path.abspath
+    error = os.error
+    deep = 0
+
+    lst = deque()
+    if isdir(top):
+        top = abspath(top)
+        lst.append(1)
+        lst.append(top)
+
+    while len(lst) > 1:
+        top = lst.popleft()
+        if type(top) == int:
+            deep = top
+            lst.append(deep + 1)
+            top = lst.popleft()
+
+        try:
+            names = listdir(top)
+        except error, err:
+            if onerror is not None:
+                onerror(err)
+            continue
+        
+        dirs, nondirs = [], []
+        for name in names:
+            path = '%s/%s' % (top, name)
+            if isdir(path):
+                dirs.append(name)
+            else:
+                nondirs.append(name)
+        yield deep, top, dirs, nondirs
+        
+        for name in dirs:
+            path = '%s/%s' % (top, name)
+            if not islink(path) or followlinks:
+                lst.append(path)
+        
+def walkdir(top, onWalk, mode='dfs', followlinks=False):
+    '''mode: 'dfs' or 'bfs'.
+    onWalk like: func(deep, parent, child, isDir)'''
+    walk = (mode == 'dfs' and _walk_dfs) or _walk_bfs
+    for deep, path, dirs, files in walk(top, followlinks=followlinks):
         for d in dirs:
-            onWalk(path, d, True)
+            onWalk(deep, path, d, True)
         for f in files:
-            onWalk(path, f, False)
-
-def what(parent, child, isDir):
-    print os.path.abspath('%s/%s' % (parent, child))
+            onWalk(deep, path, f, False)
+        
+def what(deep, parent, child, isDir):
+    #print os.path.abspath('%s/%s' % (parent, child))
+    print '%d %s/%s' % (deep, parent, child)
+    #print '%s' % (parent,)
 
 def main():
     import sys
