@@ -760,6 +760,9 @@ if __name__ == '__main__':
         sys.exit(1)
 
     try:
+        env = sys.argv[1]
+        who = sys.argv[2]
+
         if opts.laddr:
             host, port = opts.laddr.split(':')
             port = int(port)
