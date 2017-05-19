@@ -3,17 +3,20 @@
 import os, sys, time, re, json, socket
 
 import tutils
+import proto
 
-host = sys.argv[1]
-port = int(sys.argv[2])
+p = proto.EqParser()
+p.execute('''
+import('elf.proto')
+elf:ELF64
+phdr:ELF64_PHDR
+print(calcsize(phdr))
+''')
 
-net = tutils.net()
-net.connect(host, port)
+with file('/bin/ls', 'rb') as fp:
+    data = fp.read()
 
-data = 'GET /app/v1/market/stock_rank?mt=hs&rt=7&num=2 HTTP/1.1\r\nHost: 139.196.228.231:18888\r\nAccept: */*\r\nContent-type: application/json;charset=UTF-8\r\n\r\n'
-net.send(data)
+elf = p.getVar('elf')
+elf.decode(data)
+print elf.dump()
 
-data = net.recv()
-print data
-
-net.close()

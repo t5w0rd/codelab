@@ -14,7 +14,7 @@ __all__ = ["EqParser", ]
 
 
 class Variable:
-    def __init__(self, vtype, name, value = None, upvalue = None):
+    def __init__(self, vtype, name, value=None, upvalue=None):
         self.type = vtype
         self.name = name
         self.value = value
@@ -56,7 +56,7 @@ class Variable:
 
 
     def encode(self):
-        parser = self.type._scope.parser
+        parser = self.type._scope._parser
         parser.refValCache()
         data = self.type.encode(self)
         parser.unrefValCache()
@@ -64,9 +64,10 @@ class Variable:
 
 
     def decode(self, data):
-        parser = self.type._scope.parser
+        parser = self.type._scope._parser
         parser.refValCache()
         parser._oncesize = len(data)
+        parser._onceoffset = 0
         size = self.type.decode(self, data)
         parser.unrefValCache()
         #parser._oncesize = 0
@@ -74,7 +75,7 @@ class Variable:
 
 
     def calcsize(self):
-        parser = self.type._scope.parser
+        parser = self.type._scope._parser
         parser.refValCache()
         size = self.type.calcsize(self)
         parser.unrefValCache()
@@ -89,7 +90,7 @@ class Type:
     def __init__(self, scope, name, defval=None):
         self._scope = scope
         self.name = name
-        self.defval = defval
+        self._defval = defval
         #print 'D|newType(%s)' % (name)
 
 
@@ -104,7 +105,10 @@ class Type:
             return None
 
         #print 'D|alloc var(%s:%s)' % (name, self.name)
-        return Variable(self, name, value = self.defval)
+        return Variable(self, name, value=self._defval)
+
+    def parser(self):
+        return self._scope._parser
 
 
     def encode(self, var, level=0):
@@ -169,7 +173,9 @@ class Basic(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value, = struct.unpack_from(self.packfmt, buf, offset)
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-        return self.calcsize(var)
+        ret = self.calcsize(var)
+        self.parser()._onceoffset = offset + ret
+        return ret
 
 
     def calcsize(self, var):
@@ -205,7 +211,9 @@ class String(Type):
         #    traceback.print_exc()
         #    print "packfmt(%r)" % (packfmt,)
         #    exit(0)
-        return self.calcsize(var)
+        ret = self.calcsize(var)
+        self.parser()._onceoffset = offset + ret
+        return ret
 
 
     def calcsize(self, var):
@@ -280,6 +288,8 @@ class Bits(Type):
             wide = var.type.wide
             var.value = int(binpack[pos:pos+wide], 2)
             pos += wide
+
+        self.parser()._onceoffset = offset + bytenum
         return bytenum
 
 
@@ -375,6 +385,7 @@ class Struct(Type):
             bitflag = False
             pos += Bits.decodebits(bitpack, buf, offset=pos)
         #print 'D| ' + '    ' * level + '}'
+        self.parser()._onceoffset = pos
         return pos - offset
 
 
@@ -495,6 +506,7 @@ class Array(Type):
             if self.usedatasize:
                 self.size = index
         #print 'D| ' + '    ' * level + ']'
+        self.parser()._onceoffset = pos
         return pos - offset
 
 
@@ -549,6 +561,7 @@ class IPv4(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value = '.'.join([str(b) for b in struct.unpack_from('4B', buf, offset)])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        self.parser()._onceoffset = offset + 4
         return 4
 
 
@@ -574,6 +587,7 @@ class MAC(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value = ':'.join([b.encode('hex') for b in buf[offset:offset+6]])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        self.parser()._onceoffset = offset + 6
         return 6
 
 
@@ -588,11 +602,11 @@ class MAC(Type):
     
 class Scope(Variable):
     def __init__(self, name, parser):
-        Variable.__init__(self, None, name, value = dict(), upvalue = None)
-        self.parser = parser
+        Variable.__init__(self, None, name, value=dict(), upvalue=None)
+        self._parser = parser
 
         # types with no params
-        self.tmap = {
+        self._tmap = {
             'uint8': Basic(self, 'uint8', 'B', defval=0),
             'uint16': Basic(self, 'uint16', 'H', defval=0),
             'uint32': Basic(self, 'uint32', 'I', defval=0),
@@ -612,7 +626,7 @@ class Scope(Variable):
         }
 
         # types with params
-        self.tpmap = {
+        self._tpmap = {
             'string': String,
             'bits': Bits
         }
@@ -625,25 +639,25 @@ class Scope(Variable):
 
 
     def getType(self, typeexpr, varscope):
-        return self.parser._parseType(typeexpr, varscope, 'Scope.getType(%s, %s)' % (repr(typeexpr), varscope.name))
+        return self._parser._parseType(typeexpr, varscope, 'Scope.getType(%s, %s)' % (repr(typeexpr), varscope.name))
         #try:
-        #    return self.parser._parseType(typeexpr, varscope, '')
+        #    return self._parser._parseType(typeexpr, varscope, '')
         #except:
         #    return None
 
 
     #def getValue(self, expr, varscope):
-    #    return self.parser._parseRValue(expr, varscope, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #    return self._parser._parseRValue(expr, varscope, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
 
 
     #def setValue(self, expr, varscope, value):
-    #    var = self.parser._parseLValue(expr, varscope, autoalloc=True, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #    var = self._parser._parseLValue(expr, varscope, autoalloc=True, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
     #    var.value = value
 
 
     def defType(self, name, proto):
         newtype = Struct(self, name, proto)
-        self.tmap[name] = newtype
+        self._tmap[name] = newtype
         return newtype
 
 
@@ -761,15 +775,17 @@ class EqParser(Parser):
             'calcsize': ('L', lambda self, lvar: lvar.calcsize()),
             'dump': ('L', lambda self, lvar: lvar.dump()),
             '__size': ('', lambda self: self._oncesize),
+            'offset': ('', lambda self: self._onceoffset),
             'import': ('R*', EqParser._func_import),
         }
         self._pylocals = None
         self._valcache = None
         self._oncesize = 0  # use for decoding once
+        self._onceoffset = 0  # use for decoding once
 
 
     def definedTypes(self):
-        return sorted(self._scope.tmap.keys() + self._scope.tpmap.keys())
+        return sorted(self._scope._tmap.keys() + self._scope._tpmap.keys())
 
 
     def definedFunctions(self):
@@ -1110,7 +1126,7 @@ class EqParser(Parser):
                 return None
 
             
-            if vtype in self._scope.tpmap:
+            if vtype in self._scope._tpmap:
                 #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
                 paramexprs = EqParser._splitWithPairs(exprs[0], ',', EqParser._spSplitFuncParams)
                 vals = [self._parseRValue(paramexpr, varscope, line=line) for paramexpr in paramexprs]
@@ -1124,12 +1140,12 @@ class EqParser(Parser):
                         self.error(ValueError, 'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
                         return None
                     
-                    return self._scope.tpmap[vtype](self._scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)  # return String obj
+                    return self._scope._tpmap[vtype](self._scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)  # return String obj
                 elif vtype == 'bits':
                     if not isinstance(vals[0], int) and exprs[0] != '':
                         self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
                         return None
-                    return self._scope.tpmap[vtype](self._scope, vals[0])  # return Bits obj
+                    return self._scope._tpmap[vtype](self._scope, vals[0])  # return Bits obj
 
             val = self._parseRValue(exprs[0], varscope, line=line)
             if isinstance(val, dict) or isinstance(val, list):  # struct value, or array value
@@ -1142,13 +1158,13 @@ class EqParser(Parser):
 
             typeexpr = vtype + '(' + repr(val) + ')'
 
-            if typeexpr in self._scope.tmap:
-                return self._scope.tmap[typeexpr]
+            if typeexpr in self._scope._tmap:
+                return self._scope._tmap[typeexpr]
             else:
                 typeexpr = vtype + '()'
 
-        if typeexpr in self._scope.tmap:
-            return self._scope.tmap[typeexpr]
+        if typeexpr in self._scope._tmap:
+            return self._scope._tmap[typeexpr]
 
         #print 'ERR | typeexpr(%s)' % (typeexpr)
         self.error(NameError, 'type(%s) is not defined or cannot be parsed: %s' % (repr(typeexpr), repr(line)))
