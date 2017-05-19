@@ -22,7 +22,7 @@ __all__ = ['XNet', 'net', 'daemonize', 'multijobs', 'initLogger', 'StopWatch']
 
 class Net:
     _lstn = None
-    _tcp = None, None
+    _tcp = None
     _udp = None  #socket.socket(type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
 
     def __init__(self):
@@ -149,6 +149,39 @@ class Net:
     def addru(self):
         return self._addru
 
+    def sendf(self, fp, offset=None, size=None):
+        if offset is not None:
+            fp.seek(offset, os.SEEK_SET)
+
+        sent = 0
+        while size is None or sent < size:
+            n = (size is not None and size - sent) or 512
+            s = fp.read(n)
+            if not s:
+                break
+
+            n_ = self._tcp.send(s)
+            sent += n_
+            if n_ != len(s):
+                fp.seek(n_ - len(s), os.SEEK_CUR)
+
+    def recvf(self, fp, size=None, timeout=None):
+        '''if size is None, recv until empty data'''
+        self._tcp.settimeout(timeout)
+        recved = 0
+        while size is None or recved < size:
+            n = (size is not None and size - recved) or 0xffff
+            s = self._tcp.recv(n)
+            if not s:
+                break
+
+            n_ = fp.write(s)
+            while n_ != len(s):
+                s = s[n_:]
+                n_ = fp.write(s)
+
+        self._tcp.settimeout(timeout)
+
     def rpty(self, cmd, close_wait=0):
         '''remote execute, I/O from tcp.
         when the connection closed, what child for close_wait seconds. -1: wait until child exits.'''
@@ -255,14 +288,14 @@ class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def posivePtyServer(self, host, port, handler=_rpty):
+    def positivePtyServer(self, host, port, handler=_rpty):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
             handler(self)
             self.close()
 
-    def posivePtyClient(self, host, port, handler=_lpty):
+    def positivePtyClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.connect(host, port)
         handler(self)
@@ -431,7 +464,53 @@ class XNet(Net):
                 self.sendto(data, *keyAddr.pop(key))
 
 
-def ptyPipe(who, env, **args):
+def _ptyPipe_ps2rc(args):
+    '''positive server <-> reverse client.'''
+    ps_host = args['host']  # positive server listen host
+    ps_port = args['port']  # positive server listen port
+    rs_host = args['rhost']  # reverse server host
+    rs_port = args['rport']  # reverse server port
+    
+    def psHandler(ps_net):
+        def rcHandler(rc_net):
+            _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
+        
+        rc_net = XNet()  # reverse client
+        rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
+    
+    ps_net = XNet()  # positive server
+    ps_net.positivePtyServer(ps_host, ps_port, handler=psHandler)
+
+def _ptyPipe_pc(args):
+    '''positive client.'''
+    ps_host = args['rhost']  # positive server listen host
+    ps_port = args['rport']  # positive server listen port
+
+    pc_net = XNet()
+    pc_net.positivePtyClient(ps_host, ps_port)
+
+def _ptyPipe_rs(args):
+    '''reverse server.'''
+    rs_host = args['rhost']  # reverse server host
+    rs_port = args['rport']  # reverse server port
+    cmd = args['cmd']
+
+    def rsHandler(rs_net):
+        #print 'remote connection: %s:%d' % rs_net.raddr()
+        rs_net.rpty(cmd)
+
+    rs_net = XNet()
+    rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
+
+def _ptyPipe_rc(args):
+    '''reverse client.'''
+    rs_host = args['host']  # reverse server host
+    rs_port = args['port']  # reverse server port
+
+    rc_net = XNet()
+    rc_net.reversePtyClient(rs_host, rs_port)
+
+def ptyPipe(env, who, **args):
     '''who:
     M: middle host with public ip;
     s: source host with internal ip;
@@ -447,65 +526,22 @@ def ptyPipe(who, env, **args):
     sMt: s!t s>M M=t
     '''
 
-    if env == 'stM' or env == 'tsM':
+    if env == 'tsM':
         if who == 'M':
-            ps_host = args['host']  # positive server listen host
-            ps_port = args['port']  # positive server listen port
-            rs_host = args['rhost']  # reverse server host
-            rs_port = args['rport']  # reverse server port
-            
-            def psHandler(ps_net):
-                def rcHandler(rc_net):
-                    _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
-                
-                rc_net = XNet() # reverse client
-                rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
-            
-            ps_net = XNet() # positive server
-            ps_net.posivePtyServer(ps_host, ps_port, handler=psHandler)
-
+            _ptyPipe_ps2rc(args)
         elif who == 's':
-            ps_host = args['host']  # positive server listen host
-            ps_port = args['port']  # positive server listen port
-
-            pc_net = XNet()
-            pc_net.posivePtyClient(ps_host, ps_port)
-            
+            _ptyPipe_pc(args)
         elif who == 't':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-            cmd = args['cmd']
-    
-            def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.raddr()
-                rs_net.rpty(cmd)
-
-            rs_net = XNet()
-            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
-            
+            _ptyPipe_rs(args)
     elif env == 'sMt':
-        pass
+        raise Exception('Not supported')
     elif env == 'tS':
         if who == 'S':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-
-            rc_net = XNet()
-            rc_net.reversePtyClient(rs_host, rs_port)
+            _ptyPipe_rc(args)
         elif who == 't':
-            rs_host = args['host']  # reverse server host
-            rs_port = args['port']  # reverse server port
-            cmd = args['cmd']
-            
-            def rsHandler(rs_net):
-                #print 'remote connection: %s:%d' % rs_net.raddr()
-                rs_net.rpty(cmd)
-
-            rs_net = XNet()
-            rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
+            _ptyPipe_rs(args)
     else:
-        pass
-
+        raise Exception('Not supported')
 
 _net = XNet()
 def net():
@@ -704,5 +740,49 @@ class StopWatch:
     def logs(self):
         return self._logs
 
+
 if __name__ == '__main__':
-    tcpServer('localhost', 2889)
+    from optparse import OptionParser
+
+    op = OptionParser()
+    op.set_usage('''%prog <ENV> <WHO> [options]\n  ENV\tEnvironment: tsM/tS\n  WHO\tWho: t/s/M/S''')
+
+    #op.add_option('-e', '--env', action='store', dest='env', type=str, help="Environment, must be set. (tsM/tS)")
+    #op.add_option('-w', '--who', action='store', dest='who', type=str, help="Who, must be set. (s/t/M/S)")
+    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
+    op.add_option('-l', '--local', action='store', dest='laddr', type=str, help="Address of local host, like 0.0.0.0:1234")
+    op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help="Address of remote host, like 192.168.1.101:1234")
+
+    (opts, args) = op.parse_args()
+
+    if len(sys.argv) < 4 or (not opts.laddr and not opts.raddr) or sys.argv[1] not in ('tsM', 'tS') or sys.argv[2] not in ('t', 's', 'M', 'S'):
+        op.print_help()
+        sys.exit(1)
+
+    try:
+        if opts.laddr:
+            host, port = opts.laddr.split(':')
+            port = int(port)
+        else:
+            host, port = None, None
+
+        if opts.raddr:
+            rhost, rport = opts.raddr.split(':')
+            rport = int(rport)
+        else:
+            rhost, rport = None, None
+
+    daemon = opts.daemon
+
+    except:
+        op.print_help()
+        sys.exit(1)
+
+    if daemon:
+        daemonize()
+
+    if 'HOME' in os.environ:
+        os.chdir(os.environ['HOME'])
+
+    ptyPipe(env, who, host=host, port=port, rhost=rhost, rport=rport)
+
