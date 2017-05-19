@@ -772,7 +772,7 @@ if __name__ == '__main__':
         else:
             rhost, rport = None, None
 
-    daemon = opts.daemon
+        daemon = opts.daemon
 
     except:
         op.print_help()
