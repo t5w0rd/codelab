@@ -1355,7 +1355,7 @@ def main():
                 elif proto == dpkt.ethernet.ETH_TYPE_IP:
                     srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
                     ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
-                    if not srcIp in ('192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92', '192.168.1.101'):
+                    if not srcIp in ('45.77.23.212', '192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92', '192.168.1.101'):
                         print ipProto, srcIp
                         if ipProto == dpkt.ip.IP_PROTO_TCP:
                             tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
