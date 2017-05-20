@@ -19,6 +19,7 @@ class Variable:
         self.name = name
         self.value = value
         self.upvalue = upvalue
+        self._offset = 0  # after decode, _offset will be set
 
 
     def __getitem__(self, k):
@@ -83,7 +84,9 @@ class Variable:
 
 
     def dump(self, mode='str', **params):
-        return self.type.dump(self, mode = mode, **params)
+        parser = self.type._scope._parser
+        parser._onceoffset = 0
+        return self.type.dump(self, mode=mode, **params)
 
 
 class Type:
@@ -138,7 +141,11 @@ class Type:
 
     
     def dumpstr(self, var, short=True, level=0):
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        if var._offset is not None:
+            res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        else:
+            res = '%s  %s' % ('-' * 8, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+
         return res
 
     
@@ -173,6 +180,7 @@ class Basic(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value, = struct.unpack_from(self.packfmt, buf, offset)
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        var._offset = offset
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -211,6 +219,7 @@ class String(Type):
         #    traceback.print_exc()
         #    print "packfmt(%r)" % (packfmt,)
         #    exit(0)
+        var._offset = offset
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -237,7 +246,7 @@ class String(Type):
         val = self.transform(var.value[:int(packfmt[:-1])])
         if short and len(val) > 24:
             val = val[:20] + '...'
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, repr(val))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(val))
         return res
 
 
@@ -259,6 +268,7 @@ class Bits(Type):
 
     def decode(self, var, buf, offset=0, level=0):
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        var._offset = offset
         return Bits.BitsSize(self.wide)
 
 
@@ -289,7 +299,6 @@ class Bits(Type):
             var.value = int(binpack[pos:pos+wide], 2)
             pos += wide
 
-        self.parser()._onceoffset = offset + bytenum
         return bytenum
 
 
@@ -366,7 +375,7 @@ class Struct(Type):
         for fname in self.fseq:
             #print '###', self.ftypeexpr[fname]
             ftype = self._scope.getType(self.ftypeexpr[fname], var)
-            #print '@@', var.name, var.value, fname, ftype.name
+            #print '@@ %d\t%s\t%s\t%s' % (self.parser()._onceoffset, var.name, fname, ftype.name)
             fvar = ftype.allocVar(fname)
             fvar.upvalue = var
             var.value[fname] = fvar
@@ -375,16 +384,21 @@ class Struct(Type):
                 if not bitflag:  # begin pack bits var
                     bitflag = True
                     bitpack = list()
+                else:
+                    fvar._offset = None
                 bitpack.append(fvar)
             else:
                 if bitflag:  # end pack bits var
                     bitflag = False
                     pos += Bits.decodebits(bitpack, buf, offset=pos)
+                    self.parser()._onceoffset = pos
                 pos += res
         if bitflag:  # end pack bits
             bitflag = False
             pos += Bits.decodebits(bitpack, buf, offset=pos)
+            self.parser()._onceoffset = pos
         #print 'D| ' + '    ' * level + '}'
+        var._offset = offset
         self.parser()._onceoffset = pos
         return pos - offset
 
@@ -416,7 +430,7 @@ class Struct(Type):
 
 
     def dumpstr(self, var, short=True, level=0):
-        res = '    ' * level + '%s %s = {' % (self.name, var.name)
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = {' % (self.name, var.name)
         size = len(res)
         for fname in self.fseq:
             fvar = var.value[fname]
@@ -425,9 +439,9 @@ class Struct(Type):
                 ftype = fvar.type
                 res += '\n' + ftype.dumpstr(fvar, short=short, level=level+1)
         if len(res) == size:
-            res += '}'
+            res += ' ' * 10 + '}'
         else:
-            res += '\n' + '    ' * level + '}'
+            res += '\n' + ' ' * 10 + '    ' * level + '}'
         return res
 
     
@@ -506,6 +520,7 @@ class Array(Type):
             if self.usedatasize:
                 self.size = index
         #print 'D| ' + '    ' * level + ']'
+        var._offset = offset
         self.parser()._onceoffset = pos
         return pos - offset
 
@@ -519,7 +534,7 @@ class Array(Type):
     
     
     def dumpstr(self, var, short=True, level=0):
-        res = '    ' * level + '%s %s = [' % (self.name, var.name)
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = [' % (self.name, var.name)
         size = len(res)
         count = 0
         for index in range(self.size):
@@ -528,13 +543,13 @@ class Array(Type):
                 if short:
                     count += 1
                     if count > 5:
-                        res += '\n' + '    ' * (level + 1) + '...'
+                        res += '\n' + ' ' * 10 + '    ' * (level + 1) + '...'
                         break
                 res += '\n' + self.itype.dumpstr(ivar, short=short, level=level+1)
         if len(res) == size:
-            res += ']'
+            res += ' ' * 10 + ']'
         else:
-            res += '\n' + '    ' * level + ']'
+            res += '\n' + ' ' * 10 + '    ' * level + ']'
         return res
 
 
@@ -561,6 +576,7 @@ class IPv4(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value = '.'.join([str(b) for b in struct.unpack_from('4B', buf, offset)])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        var._offset = offset
         self.parser()._onceoffset = offset + 4
         return 4
 
@@ -570,7 +586,7 @@ class IPv4(Type):
 
 
     def dumpstr(self, var, short=True, level=0):
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return res
 
 
@@ -587,6 +603,7 @@ class MAC(Type):
     def decode(self, var, buf, offset=0, level=0):
         var.value = ':'.join([b.encode('hex') for b in buf[offset:offset+6]])
         #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        var._offset = offset
         self.parser()._onceoffset = offset + 6
         return 6
 
@@ -596,7 +613,7 @@ class MAC(Type):
 
 
     def dumpstr(self, var, short=True, level=0):
-        res = '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return res
         
     
@@ -753,8 +770,9 @@ class EqParser(Parser):
     '''EqParser'''
     
     _reBetweenBrackets = re.compile(r'\((.*)\)')
-    _reBetweenSqrBrackets = re.compile(r'\[(<.*>)\]')
-    _reEval = re.compile(r'${(.*)}')
+    #_reBetweenSqrBrackets = re.compile(r'\[(<.*>)\]')
+    _reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
+    #_reEval = re.compile(r'${(.*)}')
     _reParseLine = re.compile(r'".*"|[+=:#]|[\w_<>(){}\[\]$.\',@]+')
     _spSplitFuncParams = {'()': 2, '[]': 1, '""': 4, "''": 4}
 
@@ -774,8 +792,8 @@ class EqParser(Parser):
             'decode': ('LR', lambda self, lvar, rdata: lvar.decode(rdata)),
             'calcsize': ('L', lambda self, lvar: lvar.calcsize()),
             'dump': ('L', lambda self, lvar: lvar.dump()),
-            '__size': ('', lambda self: self._oncesize),
-            'offset': ('', lambda self: self._onceoffset),
+            'total': ('', lambda self: self._oncesize),  # decode(data), total data size
+            'offset': ('', lambda self: self._onceoffset),  # cur decode offset
             'import': ('R*', EqParser._func_import),
         }
         self._pylocals = None
@@ -916,7 +934,6 @@ class EqParser(Parser):
         return var
 
 
-    
     def refValCache(self):
         if self._valcache == None:
             self._valcache = {'ref': 1}
@@ -945,9 +962,14 @@ class EqParser(Parser):
     def _getCacheVal(self, expr, varscope):
         if self._valcache == None:
             return None
+        
+        if expr.rfind(')') >= 0:
+            return None
+
         key = str(id(varscope)) + '.' + expr
         if not key in self._valcache:
             return None
+        #print 'C|expr: %s.%s = %s' % (varscope.name, expr, self._valcache[key])
         return self._valcache[key]
 
 
@@ -1105,7 +1127,7 @@ class EqParser(Parser):
 
             vtype = self._parseType(vtype, varscope, line=line)
 
-            # <3312>
+            # what in [], <3312> / 3312
             usedatasize = exprs[0][0] == '<' and exprs[0][-1] == '>'
             if usedatasize:
                 val = self._parseRValue(exprs[0][1:-1], varscope, line=line)
@@ -1265,7 +1287,7 @@ def main():
     PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
     PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
     PNG_DATA() = data:string(Length, 'base64')
-    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[<sub(__size(), calcsize(sig))>]
+    PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[<sub(total(), calcsize(sig))>]
 
     png:PNG
     '''
@@ -1353,13 +1375,14 @@ def main():
             if data == None:
                 break
             
-            xcall(eth.decode, data)
+            #xcall(eth.decode, data)
+            eth.decode(data)
 
             proto = p.getValue('eth.ethHdr.type')
             #if proto != dpkt.ethernet.ETH_TYPE_IP:
                 #print hex(proto)
             if proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
-                #print eth.dump()
+                print eth.dump()
                 if proto == dpkt.ethernet.ETH_TYPE_ARP:
                     srcIp = p.getValue('eth.ethBody.arp.srcIp')
                     #print eth.dump(), len(data)

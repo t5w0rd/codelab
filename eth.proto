@@ -7,7 +7,7 @@ ETH_HDR = dst:MAC + src:MAC + type:uint16@
 
 ETH_BODY(ETH_TYPE_ARP) = arp:ARP
 ETH_BODY(ETH_TYPE_IP) = ip:IP
-ETH_BODY() = unknown:string(sub(__size(), calcsize(ethHdr)), 'hex')
+ETH_BODY() = unknown:string(sub(total(), calcsize(ethHdr)), 'hex')
 
 
     ARP = hardType:uint16@ + protoType:uint16@ + hardLen:uint8 + protoLen:uint8 + opType:uint16@ + srcMac:MAC + srcIp:IPv4 + dstMac:MAC + dstIp:IPv4

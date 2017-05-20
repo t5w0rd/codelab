@@ -1,5 +1,5 @@
 PNG_CHUNK = Length:uint32@ + Type:string(4) + Data:PNG_DATA(Type) + CRC:string(4, 'hex')
 PNG_DATA('IHDR') = Width:uint32@ + Height:uint32@ + BitDepth:uint8 + ColorType:uint8 + CompressionMethod:uint8 + FilterMethod:uint8 + InterlaceMethod:uint8
 PNG_DATA() = data:string(Length, 'base64')
-PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[<sub(__size(), calcsize(sig))>]
+PNG = sig:string(8, 'base64') + chunks:PNG_CHUNK[<sub(total(), calcsize(sig))>]
 

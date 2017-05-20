@@ -3,5 +3,6 @@ ELF64_EHDR = e_ident:string(EI_IDENT) + e_type:uint16 + e_machine:uint16 + e_ver
 
 ELF64_PHDR = p_type:uint32 + p_flags:uint32 + p_offset:uint64 + p_vaddr:uint64 + p_paddr:uint64 + p_filesz:uint64 + p_mesz:uint64 + p_align:uint64
 
+ELF64_SHDR = sh_name:uint32 + sh_type:uint32 + sh_flags:uint64 + sh_addr:uint64 + sh_offset:uint64 + sh_size:uint64 + sh_link:uint32 + sh_info:uint32 + sh_addralign:uint64 + entsize:uint64
 
-ELF64 = ehdr:ELF64_EHDR + pad:string(sub(ehdr.e_phoff, offset())) + phdr:ELF64_PHDR + left:string(sub(__size(), offset()))
+ELF64 = ehdr:ELF64_EHDR + pad:string(sub(ehdr.e_phoff, offset())) + phdrs:ELF64_PHDR[ehdr.e_phnum] + pad2:string(sub(ehdr.e_shoff, offset())) + shdrs:ELF64_SHDR[ehdr.e_shnum] + left:string(sub(total(), offset()))
