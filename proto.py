@@ -141,11 +141,7 @@ class Type:
 
     
     def dumpstr(self, var, short=True, level=0):
-        if var._offset is not None:
-            res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-        else:
-            res = '%s  %s' % ('-' * 8, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return res
 
     
@@ -276,6 +272,13 @@ class Bits(Type):
         return Bits.BitsSize(self.wide)
 
 
+    def dumpstr(self, var, short=True, level=0):
+        if var._offset >= 0:
+            return Type.dumpstr(self, var, short=short, level=level)
+        res = ' +%d bits  %s' % (-var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        return res
+
+
     @staticmethod
     def encodebits(bitpack):
         bytelist = list()
@@ -295,6 +298,11 @@ class Bits(Type):
         binpack = ''.join(['0' * (8 - len(b)) + b for b in binpack])
         pos = 0
         for var in bitpack:
+            off = pos % 8
+            if off > 0:
+                var._offset = -off
+            else:
+                var._offset += pos / 8
             wide = var.type.wide
             var.value = int(binpack[pos:pos+wide], 2)
             pos += wide
@@ -379,19 +387,18 @@ class Struct(Type):
             fvar = ftype.allocVar(fname)
             fvar.upvalue = var
             var.value[fname] = fvar
-            res = ftype.decode(fvar, buf, offset=pos, level=level+1)
-            if isinstance(res, Bits.BitsSize):  # bits
+            if isinstance(ftype, Bits):
+                ftype.decode(fvar, buf, offset=pos, level=level+1)
                 if not bitflag:  # begin pack bits var
                     bitflag = True
                     bitpack = list()
-                else:
-                    fvar._offset = None
                 bitpack.append(fvar)
             else:
                 if bitflag:  # end pack bits var
                     bitflag = False
                     pos += Bits.decodebits(bitpack, buf, offset=pos)
                     self.parser()._onceoffset = pos
+                res = ftype.decode(fvar, buf, offset=pos, level=level+1)
                 pos += res
         if bitflag:  # end pack bits
             bitflag = False
@@ -439,9 +446,9 @@ class Struct(Type):
                 ftype = fvar.type
                 res += '\n' + ftype.dumpstr(fvar, short=short, level=level+1)
         if len(res) == size:
-            res += ' ' * 10 + '}'
+            res += '-' * 8 + '  ' + '}'
         else:
-            res += '\n' + ' ' * 10 + '    ' * level + '}'
+            res += '\n' + '-' * 8 + '  ' + '    ' * level + '}'
         return res
 
     
@@ -543,13 +550,13 @@ class Array(Type):
                 if short:
                     count += 1
                     if count > 5:
-                        res += '\n' + ' ' * 10 + '    ' * (level + 1) + '...'
+                        res += '\n' + '-' * 8 + '  ' + '    ' * (level + 1) + '...'
                         break
                 res += '\n' + self.itype.dumpstr(ivar, short=short, level=level+1)
         if len(res) == size:
-            res += ' ' * 10 + ']'
+            res += '-' * 8 + '  ' + ']'
         else:
-            res += '\n' + ' ' * 10 + '    ' * level + ']'
+            res += '\n' + '-' * 8 + '  ' + '    ' * level + ']'
         return res
 
 
