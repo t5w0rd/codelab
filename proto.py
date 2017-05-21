@@ -114,7 +114,7 @@ class Type:
     def encode(self, var, level=0):
         pass
 
-    def decode(self, var, buf, offset=0, level=0):
+    def decode(self, var, buf, level=0):
         pass
 
     def calcsize(self, var):
@@ -162,10 +162,11 @@ class Basic(Type):
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return struct.pack(self.packfmt, var.value)
 
-    def decode(self, var, buf, offset=0, level=0):
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
+        var._offset = offset
         var.value, = struct.unpack_from(self.packfmt, buf, offset)
         # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-        var._offset = offset
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -192,16 +193,16 @@ class String(Type):
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
         return struct.pack(packfmt, var.value)
 
-    def decode(self, var, buf, offset=0, level=0):
-        packfmt = self._packfmt(var)
-        # try:
-        var.value, = struct.unpack_from(packfmt, buf, offset)
-        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
-        # except Exception, msg:
-        #    traceback.print_exc()
-        #    print "packfmt(%r)" % (packfmt,)
-        #    exit(0)
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
         var._offset = offset
+        packfmt = self._packfmt(var)
+        try:
+            var.value, = struct.unpack_from(packfmt, buf, offset)
+        except Exception, msg:
+            raise Exception("%s packfmt(%r)" % (msg, packfmt))
+
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -241,9 +242,10 @@ class Bits(Type):
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return Bits.BitsSize(self.wide)
 
-    def decode(self, var, buf, offset=0, level=0):
-        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
         var._offset = offset
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return Bits.BitsSize(self.wide)
 
     def calcsize(self, var):
@@ -264,10 +266,14 @@ class Bits(Type):
         return struct.pack(str(bytenum) + 'B', *[int(bitpack[i * 8:i * 8 + 8], 2) for i in range(bytenum)])
 
     @staticmethod
-    def decodebits(bitpack, buf, offset=0):
+    def decodebits(bitpack, buf):
+        parser = None
         wide = 0
         for var in bitpack:
+            if parser is None:
+                parser = var.type.parser()
             wide += var.type.wide
+        offset = parser._onceoffset
         bytenum = Bits.calcsizebits(wide)
         buf = buf[offset:offset + bytenum]
         binpack = [bin(ord(b))[2:] for b in buf]
@@ -283,6 +289,7 @@ class Bits(Type):
             var.value = int(binpack[pos:pos + wide], 2)
             pos += wide
 
+        parser._onceoffset = offset + bytenum
         return bytenum
 
     @staticmethod
@@ -345,11 +352,13 @@ class Struct(Type):
         # print 'E| ' + '    ' * level + '}'
         return data
 
-    def decode(self, var, buf, offset=0, level=0):
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
+        var._offset = offset
         # print 'D| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         if type(buf) == str:
             buf = ctypes.create_string_buffer(init=buf, size=len(buf))
-        pos = offset
+        pos = 0
         bitpack = list()
         bitflag = False
         for fname in self.fseq:
@@ -360,7 +369,7 @@ class Struct(Type):
             fvar.upvalue = var
             var.value[fname] = fvar
             if isinstance(ftype, Bits):
-                ftype.decode(fvar, buf, offset=pos, level=level + 1)
+                ftype.decode(fvar, buf, level=level + 1)
                 if not bitflag:  # begin pack bits var
                     bitflag = True
                     bitpack = list()
@@ -368,18 +377,13 @@ class Struct(Type):
             else:
                 if bitflag:  # end pack bits var
                     bitflag = False
-                    pos += Bits.decodebits(bitpack, buf, offset=pos)
-                    self.parser()._onceoffset = pos
-                res = ftype.decode(fvar, buf, offset=pos, level=level + 1)
-                pos += res
+                    pos += Bits.decodebits(bitpack, buf)
+                pos += ftype.decode(fvar, buf, level=level + 1)
         if bitflag:  # end pack bits
             bitflag = False
-            pos += Bits.decodebits(bitpack, buf, offset=pos)
-            self.parser()._onceoffset = pos
+            pos += Bits.decodebits(bitpack, buf)
         # print 'D| ' + '    ' * level + '}'
-        var._offset = offset
-        self.parser()._onceoffset = pos
-        return pos - offset
+        return pos
 
     def calcsize(self, var):
         size = 0
@@ -474,13 +478,15 @@ class Array(Type):
         # print 'E| ' + '    ' * level + ']'
         return data
 
-    def decode(self, var, buf, offset=0, level=0):
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
+        var._offset = offset
         # print 'D| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
         if type(buf) == str:
             buf = ctypes.create_string_buffer(init=buf, size=len(buf))
-        pos = offset
+        pos = 0
         index = 0
-        while (not self.usedatasize and index < self.size) or (self.usedatasize and pos - offset < self.datasize):
+        while (not self.usedatasize and index < self.size) or (self.usedatasize and pos < self.datasize):
             # for index in range(self.size):
             ivar = self.itype.allocVar(index)
             ivar.upvalue = var
@@ -488,14 +494,12 @@ class Array(Type):
                 var.value.append(ivar)
             else:
                 var.value[index] = ivar
-            pos += self.itype.decode(ivar, buf, offset=pos, level=level + 1)
+            pos += self.itype.decode(ivar, buf, level=level + 1)
             index += 1
             if self.usedatasize:
                 self.size = index
         # print 'D| ' + '    ' * level + ']'
-        var._offset = offset
-        self.parser()._onceoffset = pos
-        return pos - offset
+        return pos
 
     def calcsize(self, var):
         total = 0
@@ -541,10 +545,12 @@ class IPv4(Type):
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return struct.pack('4B', *[int(b) for b in var.value.split('.')])
 
-    def decode(self, var, buf, offset=0, level=0):
+    def decode(self, var, buf, level=0):
+        offset = self.parser()._onceoffset
+        var._offset = offset
         var.value = '.'.join([str(b) for b in struct.unpack_from('4B', buf, offset)])
         # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        var._offset = offset
+
         self.parser()._onceoffset = offset + 4
         return 4
 
@@ -566,9 +572,10 @@ class MAC(Type):
         return struct.pack('6B', *[int(b, 16) for b in var.value.split(':')])
 
     def decode(self, var, buf, offset=0, level=0):
+        offset = self.parser()._onceoffset
+        var._offset = offset
         var.value = ':'.join([b.encode('hex') for b in buf[offset:offset + 6]])
         # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        var._offset = offset
         self.parser()._onceoffset = offset + 6
         return 6
 
