@@ -28,9 +28,10 @@ SLDE = stx:uint8 + length:uint16@ + data:string(length) + etx:uint8
 slde:SLDE
 slde.stx = 0x02
 slde.etx = 0x03
-slde.data = "hello"
-slde.length = calcsize(slde.data)
-
+data:string() = "hello"
+slde.length = calcsize(data)
+slde.data = data
+encode(slde)
 ss:string() = "test string"
 import('png.proto')
 png:PNG
@@ -41,6 +42,7 @@ with file('test.png', 'rb') as fp:
     data = fp.read()
 v.decode(data)
 
-v = p.getVar('test')
-v.encode()
+v = p.getVar('png')
+#v.encode()
+print len(v.encode())
 print v.dump()

@@ -6,9 +6,9 @@
 #
 #
 
-import struct
-import re
 import ctypes
+import re
+import struct
 
 __all__ = ["EqParser", ]
 
@@ -133,8 +133,8 @@ class Type:
             return None
 
     def dumpstr(self, var, short=True, level=0):
-        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
-        self.name, var.name, repr(self.transform(var.value)))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %r' % (
+        self.name, var.name, self.transform(var.value))
         return res
 
     def dumpdictset(self, data, name, val):
@@ -160,7 +160,7 @@ class Basic(Type):
 
     def encode(self, var, level=0):
         var._offset = self.parser()._onceoffset
-        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'E| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value))
         ret = struct.pack(self.packfmt, var.value)
         self.parser()._onceoffset += len(ret)
         return ret
@@ -169,7 +169,7 @@ class Basic(Type):
         offset = self.parser()._onceoffset
         var._offset = offset
         var.value, = struct.unpack_from(self.packfmt, buf, offset)
-        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'D| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value))
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -194,7 +194,7 @@ class String(Type):
     def encode(self, var, level=0):
         var._offset = self.parser()._onceoffset
         packfmt = self._packfmt(var)
-        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        # print 'E| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value[:int(packfmt[:-1])]))
         ret = struct.pack(packfmt, var.value)
         self.parser()._onceoffset += len(ret)
         return ret
@@ -208,7 +208,7 @@ class String(Type):
         except Exception, msg:
             raise Exception("%s packfmt(%r)" % (msg, packfmt))
 
-        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        # print 'D| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value[:int(packfmt[:-1])]))
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
@@ -217,7 +217,7 @@ class String(Type):
         return struct.calcsize(self._packfmt(var))
 
     def _packfmt(self, var):
-        if self.size == None:
+        if self.size is None:
             return str(len(var.value)) + 's'
         return str(self.size) + 's'
 
@@ -231,7 +231,7 @@ class String(Type):
         val = self.transform(var.value[:int(packfmt[:-1])])
         if short and len(val) > 24:
             val = val[:20] + '...'
-        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(val))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %r' % (self.name, var.name, val)
         return res
 
 
@@ -246,13 +246,13 @@ class Bits(Type):
 
     def encode(self, var, level=0):
         var._offset = self.parser()._onceoffset
-        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'E| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value))
         return Bits.BitsSize(self.wide)
 
     def decode(self, var, buf, level=0):
         offset = self.parser()._onceoffset
         var._offset = offset
-        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'D| ' + '    ' * level + '%s %s = %r' % (self.name, var.name, self.transform(var.value))
         return Bits.BitsSize(self.wide)
 
     def calcsize(self, var):
@@ -261,8 +261,8 @@ class Bits(Type):
     def dumpstr(self, var, short=True, level=0):
         if var._offset >= 0:
             return Type.dumpstr(self, var, short=short, level=level)
-        res = ' +%d bits  %s' % (-var._offset, '    ' * level) + '%s %s = %s' % (
-        self.name, var.name, repr(self.transform(var.value)))
+        res = ' +%d bits  %s' % (-var._offset, '    ' * level) + '%s %s = %r' % (
+        self.name, var.name, self.transform(var.value))
         return res
 
     @staticmethod
@@ -335,7 +335,7 @@ class Struct(Type):
 
     def allocVar(self, name):
         var = Type.allocVar(self, name)
-        if var == None:
+        if var is None:
             return None
 
         fvmap = dict()
@@ -352,10 +352,13 @@ class Struct(Type):
         bitpack = None
         bitflag = False
         for fname in self.fseq:
-            ftype = self._scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
-            if fvar == None:  # try to use defval
+            if fvar is None:  # try to use defval
+                ftype = self._scope.getType(self.ftypeexpr[fname], var)
                 fvar = ftype.allocVar(fname)
+            else:
+                ftype = fvar.type
+            
             if isinstance(ftype, Bits):
                 ftype.encode(fvar, level=level + 1)
                 if not bitflag:  # begin pack bits
@@ -412,7 +415,7 @@ class Struct(Type):
         for fname in self.fseq:
             ftype = self._scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
-            if fvar == None:
+            if fvar is None:
                 fvar = ftype.allocVar(fname)
             res = ftype.calcsize(fvar)
             if isinstance(res, Bits.BitsSize):  # bits
@@ -449,7 +452,7 @@ class Struct(Type):
         val = dict()
         for fname in self.fseq:
             fvar = var.value[fname]
-            if not fvar == None:
+            if not fvar is None:
                 # ftype = self._scope.getType(self.ftypeexpr[fname], var)
                 ftype = fvar.type
                 ftype.dumpdict(fvar, data=val, transform=transform)
@@ -469,17 +472,20 @@ class Array(Type):
         self.usedatasize = datasize  # size is dynamic
         if not self.usedatasize:
             self.size = size
-            self.datasize = 0
+            self.datasize = None
         else:
-            self.size = 0
+            self.size = None
             self.datasize = size
 
     def allocVar(self, name):
         var = Type.allocVar(self, name)
-        if var == None:
+        if var is None:
             return None
 
-        var.value = [None] * self.size
+        if self.usedatasize:
+            var.value = list()
+        else:
+            var.value = [None] * self.size
         return var
 
     def encode(self, var, level=0):
@@ -488,7 +494,7 @@ class Array(Type):
         ret = str()
         for index in range(self.size):
             ivar = var.value[index]
-            if ivar == None:  # try to use defval
+            if ivar is None:  # try to use defval
                 ivar = self.itype.allocVar(index)
             ret += self.itype.encode(ivar, level=level + 1)
         # print 'E| ' + '    ' * level + ']'
@@ -512,8 +518,8 @@ class Array(Type):
                 var.value[index] = ivar
             pos += self.itype.decode(ivar, buf, level=level + 1)
             index += 1
-            if self.usedatasize:
-                self.size = index
+        if self.usedatasize:
+            self.__init__(self._scope, self.itype, index, datasize=False)
         # print 'D| ' + '    ' * level + ']'
         return pos
 
@@ -546,7 +552,7 @@ class Array(Type):
     def dumpdict(self, var, data=None, transform=False):
         val = list()
         for ivar in var.value:
-            if not ivar == None:
+            if not ivar is None:
                 ivar.type.dumpdict(ivar, data=val, transform=transform)
             else:
                 val = None
@@ -578,7 +584,7 @@ class IPv4(Type):
 
     def dumpstr(self, var, short=True, level=0):
         res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
-        self.name, var.name, self.transform(var.value))
+            self.name, var.name, self.transform(var.value))
         return res
 
 
@@ -606,7 +612,7 @@ class MAC(Type):
 
     def dumpstr(self, var, short=True, level=0):
         res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
-        self.name, var.name, self.transform(var.value))
+            self.name, var.name, self.transform(var.value))
         return res
 
 
@@ -617,20 +623,20 @@ class Scope(Variable):
 
         # types with no params
         self._tmap = {
-            'uint8': Basic(self, 'uint8', 'B', defval=0),
-            'uint16': Basic(self, 'uint16', 'H', defval=0),
-            'uint32': Basic(self, 'uint32', 'I', defval=0),
-            'uint64': Basic(self, 'uint64', 'Q', defval=0L),
-            'int8': Basic(self, 'int8', 'b', defval=0),
-            'int16': Basic(self, 'int16', 'h', defval=0),
-            'int32': Basic(self, 'int32', 'i', defval=0),
-            'int64': Basic(self, 'int64', 'q', defval=0L),
-            'uint16@': Basic(self, 'uint16@', '!H', defval=0),
-            'uint32@': Basic(self, 'uint32@', '!I', defval=0),
-            'uint64@': Basic(self, 'uint64@', '!Q', defval=0L),
-            'int16@': Basic(self, 'int16@', '!h', defval=0),
-            'int32@': Basic(self, 'int32@', '!i', defval=0),
-            'int64@': Basic(self, 'int64@', '!q', defval=0L),
+            'uint8': Basic(self, 'uint8', 'B', defval=None),
+            'uint16': Basic(self, 'uint16', 'H', defval=None),
+            'uint32': Basic(self, 'uint32', 'I', defval=None),
+            'uint64': Basic(self, 'uint64', 'Q', defval=None),
+            'int8': Basic(self, 'int8', 'b', defval=None),
+            'int16': Basic(self, 'int16', 'h', defval=None),
+            'int32': Basic(self, 'int32', 'i', defval=None),
+            'int64': Basic(self, 'int64', 'q', defval=None),
+            'uint16@': Basic(self, 'uint16@', '!H', defval=None),
+            'uint32@': Basic(self, 'uint32@', '!I', defval=None),
+            'uint64@': Basic(self, 'uint64@', '!Q', defval=None),
+            'int16@': Basic(self, 'int16@', '!h', defval=None),
+            'int32@': Basic(self, 'int32@', '!i', defval=None),
+            'int64@': Basic(self, 'int64@', '!q', defval=None),
             'IPv4': IPv4(self),
             'MAC': MAC(self)
         }
@@ -647,18 +653,18 @@ class Scope(Variable):
         return None
 
     def getType(self, typeexpr, varscope):
-        return self._parser._parseType(typeexpr, varscope, 'Scope.getType(%s, %s)' % (repr(typeexpr), varscope.name))
+        return self._parser._parseType(typeexpr, varscope, 'Scope.getType(%r, %s)' % (typeexpr, varscope.name))
         # try:
         #    return self._parser._parseType(typeexpr, varscope, '')
         # except:
         #    return None
 
     # def getValue(self, expr, varscope):
-    #    return self._parser._parseRValue(expr, varscope, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #    return self._parser._parseRValue(expr, varscope, line='Scope.getValue(%r, %s)' % (expr, varscope.name))
 
 
     # def setValue(self, expr, varscope, value):
-    #    var = self._parser._parseLValue(expr, varscope, autoalloc=True, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
+    #    var = self._parser._parseLValue(expr, varscope, autoalloc=True, line='Scope.getValue(%r, %s)' % (expr, varscope.name))
     #    var.value = value
 
 
@@ -669,11 +675,11 @@ class Scope(Variable):
 
     def defVar(self, name, typeexpr):
         vtype = self.getType(typeexpr, self)
-        if vtype == None:
+        if vtype is None:
             return None
 
         var = vtype.allocVar(name)
-        if var == None:
+        if var is None:
             return None
 
         var.upvalue = self
@@ -715,21 +721,21 @@ class Parser:
         self._scope = Scope('GLOBAL', self)
 
     # def getType(self, name):
-    #    return self._parseType(self, typeexpr, self._scope, 'Parser.getType(self, %s)' % (repr(name)))
+    #    return self._parseType(self, typeexpr, self._scope, 'Parser.getType(self, %r)' % (name,))
 
 
     def getVar(self, expr):
         '''return the Variable instance as a l-value, expr: x or xx.yy.zz'''
-        return self._parseLValue(expr, self._scope, 'Parser.getLValue(self, %s)' % (repr(expr)))
+        return self._parseLValue(expr, self._scope, 'Parser.getLValue(self, %r)' % (expr,))
 
     def getValue(self, expr):
         '''return the value of Variable instance as r-value, expr: x or xx.yy.zz'''
-        return self._parseRValue(expr, self._scope, 'Parser.getValue(self, %s)' % (repr(expr)))
+        return self._parseRValue(expr, self._scope, 'Parser.getValue(self, %r)' % (expr))
 
     def setValue(self, expr, value):
         '''set l-value = value'''
         var = self._parseLValue(expr, self._scope, autoalloc=True,
-                                line='Parser.setValue(self, %s, %s)' % (repr(expr), repr(value)))
+                                line='Parser.setValue(self, %r, %r)' % (expr, value))
         var.value = value
 
     def error(self, e, msg):
@@ -804,7 +810,7 @@ class EqParser(Parser):
         while len(words) > 0:
             word = words.pop(0)  # pop first word
             if word in self._keywords:  # keyword
-                self.error(NameError, 'keyword(%s) is not implemented: ' % (repr(word), line))
+                self.error(NameError, 'keyword(%r) is not implemented: %r' % (word, line))
                 return
             else:  # not a keyword
                 if len(words) > 0:  # normal statement
@@ -819,14 +825,14 @@ class EqParser(Parser):
                             proto.append((fname, ftypeexpr))
 
                         if len(proto) == 0 or len(words) > 0:  # failed
-                            self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                            self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                             return
 
                         exprs = EqParser._reBetweenBrackets.findall(tname)
                         if len(exprs) == 1:  # func(...)
                             tname = tname[:tname.find('(', 1)]
                             if tname[0] == '(':  # failed
-                                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                                self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                                 return
 
                             val = self._parseRValue(exprs[0], self._scope, line)
@@ -842,20 +848,20 @@ class EqParser(Parser):
                         vname = word  # var name
                         words.pop(0)  # pop :
                         if len(words) < 1:  # failed
-                            self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                            self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                             return
 
                         vtypeexpr = words.pop(0)  # pop type name
                         var = self._scope.defVar(vname, vtypeexpr)
-                        if var == None:  # failed
+                        if var is None:  # failed
                             self.error(NameError,
-                                       'type(%s) is not defined or cannot be parsed or invalid var\'s name(%s): %s' % (
-                                       repr(vtypeexpr), repr(vname), repr(line)))
+                                       '%s:%s, type(%r) is not defined or cannot be parsed or invalid: %r' % (
+                                       vname, vtypeexpr, vtypeexpr, line))
                             return
 
                         if len(words) > 0:  # var:TYPE = r-value
                             if len(words) != 2 or words[0] != '=':  # failed
-                                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                                self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                                 return
 
                             words.pop(0)  # pop =
@@ -867,7 +873,7 @@ class EqParser(Parser):
                         # hdr.len = 5
                         # hdr = pkg.hdr
                         if len(words) != 2:  # failed
-                            self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                            self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                             return
 
                         lexpr = word  # l-value
@@ -877,7 +883,7 @@ class EqParser(Parser):
                         fvar = self._parseLValue(lexpr, self._scope, autoalloc=True, line=line)
                         fvar.value = self._parseRValue(rexpr, self._scope, line=line)
                     else:  # unsupported syntax
-                        self.error(SyntaxError, 'unsupported syntax: %s' % (repr(line)))
+                        self.error(SyntaxError, 'unsupported syntax: %r' % (line,))
                         return
 
                 else:  # var / func(33)
@@ -886,12 +892,12 @@ class EqParser(Parser):
                     if len(plists) == 1:  # func(...)
                         fname = expr[:expr.find('(', 1)]
                         if fname[0] == '(':  # failed
-                            self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                            self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                             return
 
                         self._parseFunc(fname, plists[0], self._scope, line=line)
                     else:  # var
-                        self.error(SyntaxError, 'unsupported syntax(lonely): %s' % (repr(line)))
+                        self.error(SyntaxError, 'unsupported syntax(lonely): %r' % (line,))
                         return
 
     def _autoAlloc(self, upvar, name, line=''):
@@ -901,7 +907,7 @@ class EqParser(Parser):
             vtype = upvar.type.itype
         else:
             vtype = None
-            self.error(ValueError, 'invalied upvalue(%s): %s' % (upvar.name, line))
+            self.error(ValueError, 'invalied upvalue(%r): %r' % (upvar.name, line))
             return None
         var = vtype.allocVar(name)
         var.upvalue = upvar
@@ -909,7 +915,7 @@ class EqParser(Parser):
         return var
 
     def refValCache(self):
-        if self._valcache == None:
+        if self._valcache is None:
             self._valcache = {'ref': 1}
             # print 'D|valcache|init'
         else:
@@ -924,14 +930,14 @@ class EqParser(Parser):
             # print 'D|valcache|clear'
 
     def _setCacheVal(self, expr, varscope, val):
-        if self._valcache == None:
+        if self._valcache is None:
             return val
         key = str(id(varscope)) + '.' + expr
         self._valcache[key] = val
         return val
 
     def _getCacheVal(self, expr, varscope):
-        if self._valcache == None:
+        if self._valcache is None:
             return None
 
         if expr.rfind(')') >= 0:
@@ -964,7 +970,7 @@ class EqParser(Parser):
                 if len(indexexprs) == 1:  # like .l2[r1.r2]
                     name = name[:name.find('[', 1)]
                     if name[0] == '[':  # failed
-                        self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                        self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                         return
                 if not name in lvar.value:
                     check = False
@@ -974,7 +980,7 @@ class EqParser(Parser):
                 lupvar = lvar
                 lvar = lvar.value[name]
 
-                if lvar == None and autoalloc:
+                if lvar is None and autoalloc:
                     lvar = self._autoAlloc(lupvar, lname, line=line)
 
                 if len(indexexprs) == 1:  # like .l2[r1.r2]
@@ -987,7 +993,7 @@ class EqParser(Parser):
                     lupvar = lvar
                     lvar = lvar.value[index]
 
-                    if lvar == None and autoalloc:
+                    if lvar is None and autoalloc:
                         lvar = self._autoAlloc(lupvar, lname, line=line)
 
             if check:
@@ -995,7 +1001,7 @@ class EqParser(Parser):
 
             svar = svar.upvalue
 
-        self.error(NameError, 'l-value(%s) cannot be parsed: %s' % (repr(expr), repr(line)))
+        self.error(NameError, 'l-value(%r) cannot be parsed: %r' % (expr, line))
         return None
 
     def _parseRValue(self, expr, varscope, line=''):
@@ -1005,7 +1011,7 @@ class EqParser(Parser):
             return cacheval
 
         if expr == '':
-            # self.error(ValueError, 'nothing to parse: %s' % (repr(line)))
+            # self.error(ValueError, 'nothing to parse: %r' % (line,))
             return None
 
         # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101 / 'as\ndf' / "ABd\x3fdi\t"
@@ -1018,7 +1024,7 @@ class EqParser(Parser):
             try:
                 return eval(expr[2:-1], globals(), self._pylocals)
             except Exception, msg:
-                self.error(ValueError, 'eval(%s) failed, %s: %s' % (repr(expr[2:-1]), msg, repr(line)))
+                self.error(ValueError, 'eval(%r) failed, %s: %r' % (expr[2:-1], msg, line))
                 return None
 
         # func(...)
@@ -1026,7 +1032,7 @@ class EqParser(Parser):
         if len(plists) == 1:  # = func(...)
             fname = expr[:expr.find('(', 1)]
             if fname[0] == '(':  # failed
-                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                self.error(SyntaxError, 'invalid syntax: %r' % (line))
                 return None
             return self._setCacheVal(expr, varscope, self._parseFunc(fname, plists[0], varscope, line=line))
 
@@ -1035,17 +1041,17 @@ class EqParser(Parser):
         if lvar != None:
             return self._setCacheVal(expr, varscope, lvar.value)  # return r-value
 
-        self.error(ValueError, 'r-value(%s) cannot be parsed: %s' % (repr(expr), repr(line)))
+        self.error(ValueError, 'r-value(%r) cannot be parsed: %r' % (expr, line))
         return None
 
     def _parseFunc(self, fname, paramexprs, varscope, line=''):
         if not fname in self._functions:  # function not defined
-            self.error(NameError, 'function(%s) is not defined: %s' % (repr(fname), repr(line)))
+            self.error(NameError, 'function(%r) is not defined: %r' % (fname, line))
             return None
 
         fparamlr, func = self._functions[fname]
         paramlist = EqParser._splitWithPairs(paramexprs, ',', EqParser._spSplitFuncParams)
-        # print 'D|_parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
+        # print 'D|_parseFunc(%r)|paramList|' % (fname), paramexprs, '->', paramlist
         vals = list()
         if paramexprs != '':
             if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
@@ -1055,7 +1061,7 @@ class EqParser(Parser):
             for index, paramexpr in enumerate(paramlist):
                 lr = None
 
-                if lrlock == None:
+                if lrlock is None:
                     lr = fparamlr[index]
                     if lr == '*':
                         lrlock = fparamlr[index - 1]
@@ -1069,14 +1075,14 @@ class EqParser(Parser):
                 elif lr == 'R':  # function accept a r-value
                     val = self._parseRValue(paramexpr, varscope, line=line)
                 else:  # unsupported function proto
-                    self.error(SyntaxError, 'unsupported function proto(%s): %s' % (repr(fparamlr), repr(line)))
+                    self.error(SyntaxError, 'unsupported function proto(%r): %r' % (fparamlr, line))
                     return None
 
-                if val == None:  # failed
-                    self.error(ValueError, 'invalid value: %s' % (repr(line)))
+                if val is None:  # failed
+                    self.error(ValueError, 'invalid value: %r' % (line,))
                     return None
                 vals.append(val)
-        # print 'D|_parseFunc(%s)|succ %s' % (fname, repr(res))
+        # print 'D|_parseFunc(%r)|succ %r' % (fname, res)
         res = func(self, *vals)
         return res
 
@@ -1089,7 +1095,7 @@ class EqParser(Parser):
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('[', 1)]
             if vtype[0] == '[':
-                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                 return None
 
             vtype = self._parseType(vtype, varscope, line=line)
@@ -1103,7 +1109,7 @@ class EqParser(Parser):
             if isinstance(val, int):
                 return Array(self._scope, vtype, val, usedatasize)
             else:
-                self.error(ValueError, 'value(%s) is not an integer: %s' % (repr(exprs[0]), repr(line)))
+                self.error(ValueError, 'value(%r) is not an integer: %rr' % (exprs[0], line))
                 return None
 
         # vtype(expr)
@@ -1111,7 +1117,7 @@ class EqParser(Parser):
         if len(exprs) == 1:
             vtype = typeexpr[:typeexpr.find('(', 1)]
             if vtype[0] == '(':
-                self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
+                self.error(SyntaxError, 'invalid syntax: %r' % (line,))
                 return None
 
             if vtype in self._scope._tpmap:
@@ -1122,12 +1128,13 @@ class EqParser(Parser):
                 if vtype == 'string':
                     if not isinstance(vals[0], int) and exprs[0] != '':
                         self.error(ValueError,
-                                   'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                                   '%s, size value(%s=%r) is not an integer: %r' % (
+                                   typeexpr, paramexprs[0], vals[0], line))
                         return None
 
                     if len(vals) >= 2 and vals[1] != None and not isinstance(vals[1], str):
                         self.error(ValueError,
-                                   'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
+                                   'codec value(%r) is not a string: %r' % (paramexprs[1], line))
                         return None
 
                     return self._scope._tpmap[vtype](self._scope, vals[0],
@@ -1135,17 +1142,18 @@ class EqParser(Parser):
                 elif vtype == 'bits':
                     if not isinstance(vals[0], int) and exprs[0] != '':
                         self.error(ValueError,
-                                   'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                                   '%s, size value(%s=%r) is not an integer: %r' % (
+                                   typeexpr, paramexprs[0], vals[0], line))
                         return None
                     return self._scope._tpmap[vtype](self._scope, vals[0])  # return Bits obj
 
             val = self._parseRValue(exprs[0], varscope, line=line)
             if isinstance(val, dict) or isinstance(val, list):  # struct value, or array value
-                self.error(ValueError, 'invalid value(%s): %s' % (repr(exprs[0]), repr(line)))
+                self.error(ValueError, 'invalid value(%s=%r): %r' % (exprs[0], val, line))
                 return None
 
-            if val == None:
-                self.error(ValueError, 'value(%s) cannot be parsed: %s' % (repr(exprs[0]), repr(line)))
+            if val is None:
+                self.error(ValueError, 'value(%s) cannot be parsed: %r' % (exprs[0], line))
                 return None
 
             typeexpr = vtype + '(' + repr(val) + ')'
@@ -1159,7 +1167,7 @@ class EqParser(Parser):
             return self._scope._tmap[typeexpr]
 
         # print 'ERR | typeexpr(%s)' % (typeexpr)
-        self.error(NameError, 'type(%s) is not defined or cannot be parsed: %s' % (repr(typeexpr), repr(line)))
+        self.error(NameError, 'type(%r) is not defined or cannot be parsed: %r' % (typeexpr, line))
         return None
 
     def toValue(self, s):
@@ -1191,7 +1199,7 @@ class EqParser(Parser):
         lst = list()
         sep = None
         for c in s:
-            if sep == None and c in bchars:  # ' or "
+            if sep is None and c in bchars:  # ' or "
                 sep = c
                 lst.append(c)
                 continue
@@ -1275,7 +1283,6 @@ def main():
 
     import socket
     import sys
-    import time
     import dpkt
 
     text = r'''
@@ -1334,7 +1341,7 @@ def main():
     with file('rec.txt', 'w') as fp:
         devinfos = dict()
         for data in getData():
-            if data == None:
+            if data is None:
                 break
 
             # xcall(eth.decode, data)
@@ -1357,8 +1364,8 @@ def main():
                     srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
                     ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
                     if not srcIp in (
-                    '45.77.23.212', '192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92',
-                    '192.168.1.101'):
+                            '45.77.23.212', '192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92',
+                            '192.168.1.101'):
                         print ipProto, srcIp
                         if ipProto == dpkt.ip.IP_PROTO_TCP:
                             tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
