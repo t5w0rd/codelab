@@ -32,7 +32,6 @@ slde.data = "hello"
 slde.length = calcsize(slde.data)
 
 ss:string() = "test string"
-print(encode(slde))
 import('png.proto')
 png:PNG
 ''')
@@ -41,4 +40,7 @@ v = p.getVar('png')
 with file('test.png', 'rb') as fp:
     data = fp.read()
 v.decode(data)
+
+v = p.getVar('test')
+v.encode()
 print v.dump()

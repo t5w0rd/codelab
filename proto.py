@@ -159,8 +159,11 @@ class Basic(Type):
         self.packfmt = packfmt
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
-        return struct.pack(self.packfmt, var.value)
+        ret = struct.pack(self.packfmt, var.value)
+        self.parser()._onceoffset += len(ret)
+        return ret
 
     def decode(self, var, buf, level=0):
         offset = self.parser()._onceoffset
@@ -189,9 +192,12 @@ class String(Type):
         self.encoding = encoding
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         packfmt = self._packfmt(var)
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
-        return struct.pack(packfmt, var.value)
+        ret = struct.pack(packfmt, var.value)
+        self.parser()._onceoffset += len(ret)
+        return ret
 
     def decode(self, var, buf, level=0):
         offset = self.parser()._onceoffset
@@ -239,6 +245,7 @@ class Bits(Type):
         self.wide = wide
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return Bits.BitsSize(self.wide)
 
@@ -260,10 +267,31 @@ class Bits(Type):
 
     @staticmethod
     def encodebits(bitpack):
+        parser = None
+        ret = str()
+        binpack = str()
+        pos = 0
+        for var in bitpack:
+            if parser is None:
+                parser = var.type.parser()
+            off = pos % 8
+            if off > 0:
+                var._offset = -off
+            else:
+                var._offset += pos / 8
+            wide = var.type.wide
+            pos += wide
+            # var.value = (~(0xffffffff << wide)) & 0xffffffff & var.value  # ignore out of range bits
+            s = bin(var.value)[2:][-wide:]
+            s = '0' * (wide - len(s)) + s
+            binpack += s
+
         bytelist = list()
-        bytenum = Bits.calcsizebits(len(bitpack))
-        bitpack += '0' * (bytenum * 8)
-        return struct.pack(str(bytenum) + 'B', *[int(bitpack[i * 8:i * 8 + 8], 2) for i in range(bytenum)])
+        bytenum = Bits.calcsizebits(len(binpack))
+        binpack += '0' * (bytenum * 8)
+        ret = struct.pack(str(bytenum) + 'B', *[int(binpack[i * 8:i * 8 + 8], 2) for i in xrange(bytenum)])
+        parser._onceoffset += len(ret)
+        return ret
 
     @staticmethod
     def decodebits(bitpack, buf):
@@ -318,48 +346,40 @@ class Struct(Type):
         return var
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
-        data = str()
-        bitpack = str()
+        ret = str()
+        bitpack = None
         bitflag = False
         for fname in self.fseq:
             ftype = self._scope.getType(self.ftypeexpr[fname], var)
             fvar = var.value[fname]
             if fvar == None:  # try to use defval
                 fvar = ftype.allocVar(fname)
-            res = ftype.encode(fvar, level=level + 1)
-            if res == None:  # failed
-                # print 'ERR | encode:' + fname
-                return None
-
-            if isinstance(res, Bits.BitsSize):  # bits
+            if isinstance(ftype, Bits):
+                ftype.encode(fvar, level=level + 1)
                 if not bitflag:  # begin pack bits
                     bitflag = True
-                    bitpack = str()
-                # val = (~(0xffffffff << fvar.type.wide)) & 0xffffffff & fvar.value  # ignore out of range bits
-                wide = res.wide
-                s = bin(fvar.value)[2:][-wide:][:wide]
-                s = '0' * (wide - len(s)) + s
-                bitpack += s
+                    bitpack = list()
+                bitpack.append(fvar)
             else:
-                if bitflag:  # end pack bits
+                if bitflag:  # end pack bits var
                     bitflag = False
-                    data += Bits.encodebits(bitpack)
-                data += res
+                    ret += Bits.encodebits(bitpack)
+                ret += ftype.encode(fvar, level=level + 1)
         if bitflag:  # end pack bits
             bitflag = False
-            data += Bits.encodebits(bitpack)
+            ret += Bits.encodebits(bitpack)
         # print 'E| ' + '    ' * level + '}'
-        return data
+        return ret
 
     def decode(self, var, buf, level=0):
-        offset = self.parser()._onceoffset
-        var._offset = offset
+        var._offset = self.parser()._onceoffset
         # print 'D| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         if type(buf) == str:
             buf = ctypes.create_string_buffer(init=buf, size=len(buf))
         pos = 0
-        bitpack = list()
+        bitpack = None
         bitflag = False
         for fname in self.fseq:
             # print '###', self.ftypeexpr[fname]
@@ -463,20 +483,16 @@ class Array(Type):
         return var
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
-        data = str()
+        ret = str()
         for index in range(self.size):
             ivar = var.value[index]
             if ivar == None:  # try to use defval
                 ivar = self.itype.allocVar(index)
-            res = self.itype.encode(ivar, level=level + 1)
-            if res == None:
-                # print 'ERR | encode:' + fname
-                return None
-            else:
-                data += res
+            ret += self.itype.encode(ivar, level=level + 1)
         # print 'E| ' + '    ' * level + ']'
-        return data
+        return ret
 
     def decode(self, var, buf, level=0):
         offset = self.parser()._onceoffset
@@ -542,8 +558,11 @@ class IPv4(Type):
         Type.__init__(self, scope, 'IPv4', defval=defval)
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        return struct.pack('4B', *[int(b) for b in var.value.split('.')])
+        ret = struct.pack('4B', *[int(b) for b in var.value.split('.')])
+        self.parser()._onceoffset += len(ret)
+        return ret
 
     def decode(self, var, buf, level=0):
         offset = self.parser()._onceoffset
@@ -568,8 +587,11 @@ class MAC(Type):
         Type.__init__(self, scope, 'MAC', defval=defval)
 
     def encode(self, var, level=0):
+        var._offset = self.parser()._onceoffset
         # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
-        return struct.pack('6B', *[int(b, 16) for b in var.value.split(':')])
+        ret = struct.pack('6B', *[int(b, 16) for b in var.value.split(':')])
+        self.parser()._onceoffset += len(ret)
+        return ret
 
     def decode(self, var, buf, offset=0, level=0):
         offset = self.parser()._onceoffset
