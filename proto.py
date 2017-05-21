@@ -21,48 +21,44 @@ class Variable:
         self.upvalue = upvalue
         self._offset = 0  # after decode, _offset will be set
 
+    def __str__(self):
+        return '%s(%s:%s = %r)' % (self.__class__, self.name, self.type.name, self.value)
+
+    __repr__ = __str__
 
     def __getitem__(self, k):
         '''var[k]'''
         return self.value[k].value
 
-
     def __setitem__(self, k, value):
         '''var[k] = value'''
         self.value[k].value = value
 
-    
     def isStruct(self):
         return isinstance(self.value, dict)
-
 
     def isArray(self):
         return isinstance(self.value, list)
 
-
     def setValue(self, value):
         self.value = value
-
 
     def getValue(self):
         return self.value
 
-
     def setUpValue(self, upvalue):
         self.upvalue = upvalue
-
 
     def getUpValue(self):
         return self.upvalue
 
-
     def encode(self):
         parser = self.type._scope._parser
         parser.refValCache()
+        parser._onceoffset = 0
         data = self.type.encode(self)
         parser.unrefValCache()
         return data
-
 
     def decode(self, data):
         parser = self.type._scope._parser
@@ -71,9 +67,8 @@ class Variable:
         parser._onceoffset = 0
         size = self.type.decode(self, data)
         parser.unrefValCache()
-        #parser._oncesize = 0
+        # parser._oncesize = 0
         return size
-
 
     def calcsize(self):
         parser = self.type._scope._parser
@@ -81,7 +76,6 @@ class Variable:
         size = self.type.calcsize(self)
         parser.unrefValCache()
         return size
-
 
     def dump(self, mode='str', **params):
         parser = self.type._scope._parser
@@ -94,8 +88,12 @@ class Type:
         self._scope = scope
         self.name = name
         self._defval = defval
-        #print 'D|newType(%s)' % (name)
+        # print 'D|newType(%s)' % (name)
 
+    def __str__(self):
+        return '%s(%s)' % (self.__class__, self.name)
+
+    __repr__ = __str__
 
     def allocVar(self, name):
         if isinstance(name, str):
@@ -107,28 +105,23 @@ class Type:
         else:  # failed
             return None
 
-        #print 'D|alloc var(%s:%s)' % (name, self.name)
+        # print 'D|alloc var(%s:%s)' % (name, self.name)
         return Variable(self, name, value=self._defval)
 
     def parser(self):
         return self._scope._parser
 
-
     def encode(self, var, level=0):
         pass
-
 
     def decode(self, var, buf, offset=0, level=0):
         pass
 
-
     def calcsize(self, var):
         pass
-    
 
     def transform(self, val):
         return val
-
 
     def dump(self, var, mode='str', **params):
         if mode == 'str':
@@ -139,12 +132,11 @@ class Type:
         else:
             return None
 
-    
     def dumpstr(self, var, short=True, level=0):
-        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
+        self.name, var.name, repr(self.transform(var.value)))
         return res
 
-    
     def dumpdictset(self, data, name, val):
         if isinstance(data, dict):
             data[name] = val
@@ -153,12 +145,11 @@ class Type:
 
         return data
 
-    
     def dumpdict(self, var, data=None, transform=False):
         val = var.value
         if val != None and transform:
             val = self.transform(val)
-        
+
         return self.dumpdictset(data, var.name, val)
 
 
@@ -167,27 +158,24 @@ class Basic(Type):
         Type.__init__(self, scope, name, defval=defval)
         self.packfmt = packfmt
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return struct.pack(self.packfmt, var.value)
-
 
     def decode(self, var, buf, offset=0, level=0):
         var.value, = struct.unpack_from(self.packfmt, buf, offset)
-        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         var._offset = offset
         ret = self.calcsize(var)
         self.parser()._onceoffset = offset + ret
         return ret
-
 
     def calcsize(self, var):
         return struct.calcsize(self.packfmt)
 
 
 class String(Type):
-    def __init__(self, scope, size, encoding = None, defval=''):
+    def __init__(self, scope, size, encoding=None, defval=''):
         name = 'string('
         packfmt = ''
         if size != None:
@@ -199,19 +187,17 @@ class String(Type):
         self.size = size
         self.encoding = encoding
 
-
     def encode(self, var, level=0):
         packfmt = self._packfmt(var)
-        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
         return struct.pack(packfmt, var.value)
-
 
     def decode(self, var, buf, offset=0, level=0):
         packfmt = self._packfmt(var)
-        #try:
+        # try:
         var.value, = struct.unpack_from(packfmt, buf, offset)
-        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
-        #except Exception, msg:
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value[:int(packfmt[:-1])])))
+        # except Exception, msg:
         #    traceback.print_exc()
         #    print "packfmt(%r)" % (packfmt,)
         #    exit(0)
@@ -220,22 +206,18 @@ class String(Type):
         self.parser()._onceoffset = offset + ret
         return ret
 
-
     def calcsize(self, var):
         return struct.calcsize(self._packfmt(var))
-
 
     def _packfmt(self, var):
         if self.size == None:
             return str(len(var.value)) + 's'
         return str(self.size) + 's'
 
-    
     def transform(self, val):
         if self.encoding != None:
             return val.encode(self.encoding)
         return val
-
 
     def dumpstr(self, var, short=True, level=0):
         packfmt = self._packfmt(var)
@@ -251,41 +233,35 @@ class Bits(Type):
         def __init__(self, wide):
             self.wide = wide
 
-
     def __init__(self, scope, wide, defval=0):
-        Type.__init__(self, scope, 'bits('+str(wide)+')', defval=defval)
+        Type.__init__(self, scope, 'bits(' + str(wide) + ')', defval=defval)
         self.wide = wide
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         return Bits.BitsSize(self.wide)
-
 
     def decode(self, var, buf, offset=0, level=0):
-        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
         var._offset = offset
         return Bits.BitsSize(self.wide)
-
 
     def calcsize(self, var):
         return Bits.BitsSize(self.wide)
 
-
     def dumpstr(self, var, short=True, level=0):
         if var._offset >= 0:
             return Type.dumpstr(self, var, short=short, level=level)
-        res = ' +%d bits  %s' % (-var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, repr(self.transform(var.value)))
+        res = ' +%d bits  %s' % (-var._offset, '    ' * level) + '%s %s = %s' % (
+        self.name, var.name, repr(self.transform(var.value)))
         return res
-
 
     @staticmethod
     def encodebits(bitpack):
         bytelist = list()
         bytenum = Bits.calcsizebits(len(bitpack))
         bitpack += '0' * (bytenum * 8)
-        return struct.pack(str(bytenum)+'B', *[int(bitpack[i*8:i*8+8], 2) for i in range(bytenum)])
-
+        return struct.pack(str(bytenum) + 'B', *[int(bitpack[i * 8:i * 8 + 8], 2) for i in range(bytenum)])
 
     @staticmethod
     def decodebits(bitpack, buf, offset=0):
@@ -293,7 +269,7 @@ class Bits(Type):
         for var in bitpack:
             wide += var.type.wide
         bytenum = Bits.calcsizebits(wide)
-        buf = buf[offset:offset+bytenum]
+        buf = buf[offset:offset + bytenum]
         binpack = [bin(ord(b))[2:] for b in buf]
         binpack = ''.join(['0' * (8 - len(b)) + b for b in binpack])
         pos = 0
@@ -304,11 +280,10 @@ class Bits(Type):
             else:
                 var._offset += pos / 8
             wide = var.type.wide
-            var.value = int(binpack[pos:pos+wide], 2)
+            var.value = int(binpack[pos:pos + wide], 2)
             pos += wide
 
         return bytenum
-
 
     @staticmethod
     def calcsizebits(bitpack):
@@ -323,7 +298,6 @@ class Struct(Type):
         self.fseq = [fname for fname, typeexpr in proto]  # member sequence
         self.ftypeexpr = dict(proto)  # member name-typeexpr map
 
-
     def allocVar(self, name):
         var = Type.allocVar(self, name)
         if var == None:
@@ -332,13 +306,12 @@ class Struct(Type):
         fvmap = dict()
         for fname in self.fseq:
             fvmap[fname] = None
-        
+
         var.value = fvmap
         return var
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
+        # print 'E| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         data = str()
         bitpack = str()
         bitflag = False
@@ -347,16 +320,16 @@ class Struct(Type):
             fvar = var.value[fname]
             if fvar == None:  # try to use defval
                 fvar = ftype.allocVar(fname)
-            res = ftype.encode(fvar, level=level+1)
+            res = ftype.encode(fvar, level=level + 1)
             if res == None:  # failed
-                #print 'ERR | encode:' + fname
+                # print 'ERR | encode:' + fname
                 return None
 
             if isinstance(res, Bits.BitsSize):  # bits
                 if not bitflag:  # begin pack bits
                     bitflag = True
                     bitpack = str()
-                #val = (~(0xffffffff << fvar.type.wide)) & 0xffffffff & fvar.value  # ignore out of range bits
+                # val = (~(0xffffffff << fvar.type.wide)) & 0xffffffff & fvar.value  # ignore out of range bits
                 wide = res.wide
                 s = bin(fvar.value)[2:][-wide:][:wide]
                 s = '0' * (wide - len(s)) + s
@@ -369,26 +342,25 @@ class Struct(Type):
         if bitflag:  # end pack bits
             bitflag = False
             data += Bits.encodebits(bitpack)
-        #print 'E| ' + '    ' * level + '}'
+        # print 'E| ' + '    ' * level + '}'
         return data
 
-
     def decode(self, var, buf, offset=0, level=0):
-        #print 'D| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
+        # print 'D| ' + '    ' * level + '%s %s = {' % (self.name, var.name)
         if type(buf) == str:
             buf = ctypes.create_string_buffer(init=buf, size=len(buf))
         pos = offset
         bitpack = list()
         bitflag = False
         for fname in self.fseq:
-            #print '###', self.ftypeexpr[fname]
+            # print '###', self.ftypeexpr[fname]
             ftype = self._scope.getType(self.ftypeexpr[fname], var)
-            #print '@@ %d\t%s\t%s\t%s' % (self.parser()._onceoffset, var.name, fname, ftype.name)
+            # print '@@ %d\t%s\t%s\t%s' % (self.parser()._onceoffset, var.name, fname, ftype.name)
             fvar = ftype.allocVar(fname)
             fvar.upvalue = var
             var.value[fname] = fvar
             if isinstance(ftype, Bits):
-                ftype.decode(fvar, buf, offset=pos, level=level+1)
+                ftype.decode(fvar, buf, offset=pos, level=level + 1)
                 if not bitflag:  # begin pack bits var
                     bitflag = True
                     bitpack = list()
@@ -398,17 +370,16 @@ class Struct(Type):
                     bitflag = False
                     pos += Bits.decodebits(bitpack, buf, offset=pos)
                     self.parser()._onceoffset = pos
-                res = ftype.decode(fvar, buf, offset=pos, level=level+1)
+                res = ftype.decode(fvar, buf, offset=pos, level=level + 1)
                 pos += res
         if bitflag:  # end pack bits
             bitflag = False
             pos += Bits.decodebits(bitpack, buf, offset=pos)
             self.parser()._onceoffset = pos
-        #print 'D| ' + '    ' * level + '}'
+        # print 'D| ' + '    ' * level + '}'
         var._offset = offset
         self.parser()._onceoffset = pos
         return pos - offset
-
 
     def calcsize(self, var):
         size = 0
@@ -435,36 +406,34 @@ class Struct(Type):
             size += Bits.calcsizebits(bitpack)
         return size
 
-
     def dumpstr(self, var, short=True, level=0):
         res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = {' % (self.name, var.name)
         size = len(res)
         for fname in self.fseq:
             fvar = var.value[fname]
             if fvar != None:
-                #ftype = self._scope.getType(self.ftypeexpr[fname], var)
+                # ftype = self._scope.getType(self.ftypeexpr[fname], var)
                 ftype = fvar.type
-                res += '\n' + ftype.dumpstr(fvar, short=short, level=level+1)
+                res += '\n' + ftype.dumpstr(fvar, short=short, level=level + 1)
         if len(res) == size:
             res += '-' * 8 + '  ' + '}'
         else:
             res += '\n' + '-' * 8 + '  ' + '    ' * level + '}'
         return res
 
-    
     def dumpdict(self, var, data=None, transform=False):
         val = dict()
         for fname in self.fseq:
             fvar = var.value[fname]
             if not fvar == None:
-                #ftype = self._scope.getType(self.ftypeexpr[fname], var)
+                # ftype = self._scope.getType(self.ftypeexpr[fname], var)
                 ftype = fvar.type
                 ftype.dumpdict(fvar, data=val, transform=transform)
             else:
                 val = None
         return self.dumpdictset(data, var.name, val)
 
-    
+
 class Array(Type):
     def __init__(self, scope, itype, size, datasize=False):
         '''typeexpr: BODY(hdr.result)'''
@@ -481,7 +450,6 @@ class Array(Type):
             self.size = 0
             self.datasize = size
 
-
     def allocVar(self, name):
         var = Type.allocVar(self, name)
         if var == None:
@@ -490,47 +458,44 @@ class Array(Type):
         var.value = [None] * self.size
         return var
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
+        # print 'E| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
         data = str()
         for index in range(self.size):
             ivar = var.value[index]
             if ivar == None:  # try to use defval
                 ivar = self.itype.allocVar(index)
-            res = self.itype.encode(ivar, level=level+1)
+            res = self.itype.encode(ivar, level=level + 1)
             if res == None:
-                #print 'ERR | encode:' + fname
+                # print 'ERR | encode:' + fname
                 return None
             else:
                 data += res
-        #print 'E| ' + '    ' * level + ']'
+        # print 'E| ' + '    ' * level + ']'
         return data
 
-
     def decode(self, var, buf, offset=0, level=0):
-        #print 'D| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
+        # print 'D| ' + '    ' * level + '%s %s = [' % (self.name, var.name)
         if type(buf) == str:
             buf = ctypes.create_string_buffer(init=buf, size=len(buf))
         pos = offset
         index = 0
         while (not self.usedatasize and index < self.size) or (self.usedatasize and pos - offset < self.datasize):
-        #for index in range(self.size):
+            # for index in range(self.size):
             ivar = self.itype.allocVar(index)
             ivar.upvalue = var
             if self.usedatasize:
                 var.value.append(ivar)
             else:
                 var.value[index] = ivar
-            pos += self.itype.decode(ivar, buf, offset=pos, level=level+1)
+            pos += self.itype.decode(ivar, buf, offset=pos, level=level + 1)
             index += 1
             if self.usedatasize:
                 self.size = index
-        #print 'D| ' + '    ' * level + ']'
+        # print 'D| ' + '    ' * level + ']'
         var._offset = offset
         self.parser()._onceoffset = pos
         return pos - offset
-
 
     def calcsize(self, var):
         total = 0
@@ -538,8 +503,7 @@ class Array(Type):
             ivar = var.value[index]
             total += self.itype.calcsize(ivar)
         return total
-    
-    
+
     def dumpstr(self, var, short=True, level=0):
         res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = [' % (self.name, var.name)
         size = len(res)
@@ -552,13 +516,12 @@ class Array(Type):
                     if count > 5:
                         res += '\n' + '-' * 8 + '  ' + '    ' * (level + 1) + '...'
                         break
-                res += '\n' + self.itype.dumpstr(ivar, short=short, level=level+1)
+                res += '\n' + self.itype.dumpstr(ivar, short=short, level=level + 1)
         if len(res) == size:
             res += '-' * 8 + '  ' + ']'
         else:
             res += '\n' + '-' * 8 + '  ' + '    ' * level + ']'
         return res
-
 
     def dumpdict(self, var, data=None, transform=False):
         val = list()
@@ -574,26 +537,23 @@ class IPv4(Type):
     def __init__(self, scope, defval='0.0.0.0'):
         Type.__init__(self, scope, 'IPv4', defval=defval)
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return struct.pack('4B', *[int(b) for b in var.value.split('.')])
-
 
     def decode(self, var, buf, offset=0, level=0):
         var.value = '.'.join([str(b) for b in struct.unpack_from('4B', buf, offset)])
-        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         var._offset = offset
         self.parser()._onceoffset = offset + 4
         return 4
 
-
     def calcsize(self, var):
         return 4
 
-
     def dumpstr(self, var, short=True, level=0):
-        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
+        self.name, var.name, self.transform(var.value))
         return res
 
 
@@ -601,29 +561,26 @@ class MAC(Type):
     def __init__(self, scope, defval='00:00:00:00:00:00'):
         Type.__init__(self, scope, 'MAC', defval=defval)
 
-
     def encode(self, var, level=0):
-        #print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        # print 'E| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         return struct.pack('6B', *[int(b, 16) for b in var.value.split(':')])
 
-
     def decode(self, var, buf, offset=0, level=0):
-        var.value = ':'.join([b.encode('hex') for b in buf[offset:offset+6]])
-        #print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        var.value = ':'.join([b.encode('hex') for b in buf[offset:offset + 6]])
+        # print 'D| ' + '    ' * level + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
         var._offset = offset
         self.parser()._onceoffset = offset + 6
         return 6
 
-
     def calcsize(self, var):
         return 6
 
-
     def dumpstr(self, var, short=True, level=0):
-        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (self.name, var.name, self.transform(var.value))
+        res = '%08x  %s' % (var._offset, '    ' * level) + '%s %s = %s' % (
+        self.name, var.name, self.transform(var.value))
         return res
-        
-    
+
+
 class Scope(Variable):
     def __init__(self, name, parser):
         Variable.__init__(self, None, name, value=dict(), upvalue=None)
@@ -655,26 +612,23 @@ class Scope(Variable):
             'bits': Bits
         }
 
-
     def getVar(self, name):
         if name in self.value:
             return self.value[name]
         return None
 
-
     def getType(self, typeexpr, varscope):
         return self._parser._parseType(typeexpr, varscope, 'Scope.getType(%s, %s)' % (repr(typeexpr), varscope.name))
-        #try:
+        # try:
         #    return self._parser._parseType(typeexpr, varscope, '')
-        #except:
+        # except:
         #    return None
 
-
-    #def getValue(self, expr, varscope):
+    # def getValue(self, expr, varscope):
     #    return self._parser._parseRValue(expr, varscope, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
 
 
-    #def setValue(self, expr, varscope, value):
+    # def setValue(self, expr, varscope, value):
     #    var = self._parser._parseLValue(expr, varscope, autoalloc=True, line='Scope.getValue(%s, %s)' % (repr(expr), varscope.name))
     #    var.value = value
 
@@ -683,7 +637,6 @@ class Scope(Variable):
         newtype = Struct(self, name, proto)
         self._tmap[name] = newtype
         return newtype
-
 
     def defVar(self, name, typeexpr):
         vtype = self.getType(typeexpr, self)
@@ -702,33 +655,29 @@ class Scope(Variable):
 class State:
     def __init__(self, states, init):
         '''states: {state1, state2, ...}'''
-        assert(not None in states and init in states)
+        assert (not None in states and init in states)
         self._states = states
         self._state = init
         self.stack = list()
 
-
     def set(self, state):
         '''replace cur state with new state'''
-        assert(state in self._states)
+        assert (state in self._states)
         self._state = state
 
-
     def get(self):
-        assert(self._state != None)
+        assert (self._state != None)
         return self._state
-
 
     def push(self, state):
         '''push cur state and set to new state'''
-        assert(self._state != None and state in self._states)
+        assert (self._state != None and state in self._states)
         self.stack.append(self._state)
         self._state = state
 
-
     def pop(self):
         '''pop state from stack and replace cur state'''
-        assert(len(self.stack) > 0)
+        assert (len(self.stack) > 0)
         self._state = self.stack.pop()
 
 
@@ -736,8 +685,7 @@ class Parser:
     def __init__(self):
         self._scope = Scope('GLOBAL', self)
 
-
-    #def getType(self, name):
+    # def getType(self, name):
     #    return self._parseType(self, typeexpr, self._scope, 'Parser.getType(self, %s)' % (repr(name)))
 
 
@@ -745,29 +693,24 @@ class Parser:
         '''return the Variable instance as a l-value, expr: x or xx.yy.zz'''
         return self._parseLValue(expr, self._scope, 'Parser.getLValue(self, %s)' % (repr(expr)))
 
-
     def getValue(self, expr):
         '''return the value of Variable instance as r-value, expr: x or xx.yy.zz'''
         return self._parseRValue(expr, self._scope, 'Parser.getValue(self, %s)' % (repr(expr)))
 
-
     def setValue(self, expr, value):
         '''set l-value = value'''
-        var = self._parseLValue(expr, self._scope, autoalloc=True, line='Parser.setValue(self, %s, %s)' % (repr(expr), repr(value)))
+        var = self._parseLValue(expr, self._scope, autoalloc=True,
+                                line='Parser.setValue(self, %s, %s)' % (repr(expr), repr(value)))
         var.value = value
-
 
     def error(self, e, msg):
         raise e, msg
 
-
     def _parseLValue(self, expr, varscope, line=''):
         pass
 
-
     def _parseRValue(self, expr, varscope, line=''):
         pass
-
 
     def _parseType(self, typeexpr, varscope, line=''):
         pass
@@ -775,14 +718,13 @@ class Parser:
 
 class EqParser(Parser):
     '''EqParser'''
-    
+
     _reBetweenBrackets = re.compile(r'\((.*)\)')
-    #_reBetweenSqrBrackets = re.compile(r'\[(<.*>)\]')
+    # _reBetweenSqrBrackets = re.compile(r'\[(<.*>)\]')
     _reBetweenSqrBrackets = re.compile(r'\[(.*)\]')
-    #_reEval = re.compile(r'${(.*)}')
+    # _reEval = re.compile(r'${(.*)}')
     _reParseLine = re.compile(r'".*"|[+=:#]|[\w_<>(){}\[\]$.\',@]+')
     _spSplitFuncParams = {'()': 2, '[]': 1, '""': 4, "''": 4}
-
 
     def __init__(self):
         Parser.__init__(self)
@@ -808,14 +750,11 @@ class EqParser(Parser):
         self._oncesize = 0  # use for decoding once
         self._onceoffset = 0  # use for decoding once
 
-
     def definedTypes(self):
         return sorted(self._scope._tmap.keys() + self._scope._tpmap.keys())
 
-
     def definedFunctions(self):
-        return ['%s(%s)' % (func, info[0]) for func, info in sorted(self._functions.iteritems(), key=lambda x:x[0])]
-
+        return ['%s(%s)' % (func, info[0]) for func, info in sorted(self._functions.iteritems(), key=lambda x: x[0])]
 
     def execute(self, text, pylocals=None):
         '''if you want to use the var in python, you should let: pylocals=locals() or pylocals=globals()'''
@@ -826,14 +765,13 @@ class EqParser(Parser):
             self._executeLine(line)
         self.unrefValCache()
 
-
     def _executeLine(self, line):
         '''execute line'''
         words = EqParser._reParseLine.findall(EqParser._wipeChars(line, ' \t\n\r', '\'\"'))
         if len(words) == 0 or words[0] == '#':
             return
 
-        #print 'D|' + repr(words)
+        # print 'D|' + repr(words)
         while len(words) > 0:
             word = words.pop(0)  # pop first word
             if word in self._keywords:  # keyword
@@ -847,10 +785,10 @@ class EqParser(Parser):
                         while len(words) >= 4:
                             words.pop(0)  # pop = or +
                             fname = words.pop(0)  # pop field name
-                            words.pop(0)  #pop :
+                            words.pop(0)  # pop :
                             ftypeexpr = words.pop(0)  # pop field typeexpr
                             proto.append((fname, ftypeexpr))
-                        
+
                         if len(proto) == 0 or len(words) > 0:  # failed
                             self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                             return
@@ -869,7 +807,7 @@ class EqParser(Parser):
                                 tname += '()'
 
                         self._scope.defType(tname, proto)
-                        #print 'D|define type(%s) succ' % (tname)
+                        # print 'D|define type(%s) succ' % (tname)
 
                     elif words[0] == ':':  # var:TYPE
                         vname = word  # var name
@@ -881,7 +819,9 @@ class EqParser(Parser):
                         vtypeexpr = words.pop(0)  # pop type name
                         var = self._scope.defVar(vname, vtypeexpr)
                         if var == None:  # failed
-                            self.error(NameError, 'type(%s) is not defined or cannot be parsed or invalid var\'s name(%s): %s' % (repr(vtypeexpr), repr(vname), repr(line)))
+                            self.error(NameError,
+                                       'type(%s) is not defined or cannot be parsed or invalid var\'s name(%s): %s' % (
+                                       repr(vtypeexpr), repr(vname), repr(line)))
                             return
 
                         if len(words) > 0:  # var:TYPE = r-value
@@ -892,9 +832,9 @@ class EqParser(Parser):
                             words.pop(0)  # pop =
                             rexpr = words.pop(0)  # pop r-value
                             var.value = self._parseRValue(rexpr, self._scope, line=line)
-                        #print 'D|define var(%s:%s) succ' % (vname, var.type.name)
-                            
-                    elif words[0] == '=': # var = value
+                            # print 'D|define var(%s:%s) succ' % (vname, var.type.name)
+
+                    elif words[0] == '=':  # var = value
                         # hdr.len = 5
                         # hdr = pkg.hdr
                         if len(words) != 2:  # failed
@@ -925,7 +865,6 @@ class EqParser(Parser):
                         self.error(SyntaxError, 'unsupported syntax(lonely): %s' % (repr(line)))
                         return
 
-
     def _autoAlloc(self, upvar, name, line=''):
         if upvar.isStruct():
             vtype = self._parseType(upvar.type.ftypeexpr[name], upvar, line=line)
@@ -940,23 +879,20 @@ class EqParser(Parser):
         upvar.value[name] = var
         return var
 
-
     def refValCache(self):
         if self._valcache == None:
             self._valcache = {'ref': 1}
-            #print 'D|valcache|init'
+            # print 'D|valcache|init'
         else:
             self._valcache['ref'] += 1
         return self._valcache
 
-
     def unrefValCache(self):
-        assert(self._valcache != None)
+        assert (self._valcache != None)
         self._valcache['ref'] -= 1
         if self._valcache['ref'] == 0:
             self._valcache = None
-            #print 'D|valcache|clear'
-    
+            # print 'D|valcache|clear'
 
     def _setCacheVal(self, expr, varscope, val):
         if self._valcache == None:
@@ -965,20 +901,18 @@ class EqParser(Parser):
         self._valcache[key] = val
         return val
 
-
     def _getCacheVal(self, expr, varscope):
         if self._valcache == None:
             return None
-        
+
         if expr.rfind(')') >= 0:
             return None
 
         key = str(id(varscope)) + '.' + expr
         if not key in self._valcache:
             return None
-        #print 'C|expr: %s.%s = %s' % (varscope.name, expr, self._valcache[key])
+        # print 'C|expr: %s.%s = %s' % (varscope.name, expr, self._valcache[key])
         return self._valcache[key]
-
 
     def _parseLValue(self, expr, varscope, autoalloc=False, line=''):
         flist = expr.split('.')
@@ -1035,15 +969,14 @@ class EqParser(Parser):
         self.error(NameError, 'l-value(%s) cannot be parsed: %s' % (repr(expr), repr(line)))
         return None
 
-
     def _parseRValue(self, expr, varscope, line=''):
         cacheval = self._getCacheVal(expr, varscope)
         if cacheval:
-            #print 'D|valcache|hit|%s in %s' % (expr, varscope.name)
+            # print 'D|valcache|hit|%s in %s' % (expr, varscope.name)
             return cacheval
-        
+
         if expr == '':
-            #self.error(ValueError, 'nothing to parse: %s' % (repr(line)))
+            # self.error(ValueError, 'nothing to parse: %s' % (repr(line)))
             return None
 
         # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101 / 'as\ndf' / "ABd\x3fdi\t"
@@ -1076,7 +1009,6 @@ class EqParser(Parser):
         self.error(ValueError, 'r-value(%s) cannot be parsed: %s' % (repr(expr), repr(line)))
         return None
 
-
     def _parseFunc(self, fname, paramexprs, varscope, line=''):
         if not fname in self._functions:  # function not defined
             self.error(NameError, 'function(%s) is not defined: %s' % (repr(fname), repr(line)))
@@ -1084,7 +1016,7 @@ class EqParser(Parser):
 
         fparamlr, func = self._functions[fname]
         paramlist = EqParser._splitWithPairs(paramexprs, ',', EqParser._spSplitFuncParams)
-        #print 'D|_parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
+        # print 'D|_parseFunc(%s)|paramList|' % (fname), repr(paramexprs), '->', paramlist
         vals = list()
         if paramexprs != '':
             if fparamlr[-1] != '*':  # use MIN(paramlist.size, fparamlr.size)
@@ -1115,10 +1047,9 @@ class EqParser(Parser):
                     self.error(ValueError, 'invalid value: %s' % (repr(line)))
                     return None
                 vals.append(val)
-        #print 'D|_parseFunc(%s)|succ %s' % (fname, repr(res))
+        # print 'D|_parseFunc(%s)|succ %s' % (fname, repr(res))
         res = func(self, *vals)
         return res
-
 
     def _parseType(self, typeexpr, varscope, line=''):
         '''for example, typeexpr: BODY(hdr.result), varscope: pkg
@@ -1154,25 +1085,28 @@ class EqParser(Parser):
                 self.error(SyntaxError, 'invalid syntax: %s' % (repr(line)))
                 return None
 
-            
             if vtype in self._scope._tpmap:
-                #paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
+                # paramexprs = exprs[0].split(',')  # !!!! '(x, y), z' -> '(x' + 'y)' + 'z'
                 paramexprs = EqParser._splitWithPairs(exprs[0], ',', EqParser._spSplitFuncParams)
                 vals = [self._parseRValue(paramexpr, varscope, line=line) for paramexpr in paramexprs]
-                
+
                 if vtype == 'string':
                     if not isinstance(vals[0], int) and exprs[0] != '':
-                        self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                        self.error(ValueError,
+                                   'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
                         return None
 
                     if len(vals) >= 2 and vals[1] != None and not isinstance(vals[1], str):
-                        self.error(ValueError, 'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
+                        self.error(ValueError,
+                                   'codec value(%s) is not a string: %s' % (repr(paramexprs[1]), repr(line)))
                         return None
-                    
-                    return self._scope._tpmap[vtype](self._scope, vals[0], encoding = (len(vals) >= 2 and vals[1]) or None)  # return String obj
+
+                    return self._scope._tpmap[vtype](self._scope, vals[0],
+                                                     encoding=(len(vals) >= 2 and vals[1]) or None)  # return String obj
                 elif vtype == 'bits':
                     if not isinstance(vals[0], int) and exprs[0] != '':
-                        self.error(ValueError, 'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
+                        self.error(ValueError,
+                                   'size value(%s) is not an integer: %s' % (repr(paramexprs[0]), repr(line)))
                         return None
                     return self._scope._tpmap[vtype](self._scope, vals[0])  # return Bits obj
 
@@ -1195,10 +1129,9 @@ class EqParser(Parser):
         if typeexpr in self._scope._tmap:
             return self._scope._tmap[typeexpr]
 
-        #print 'ERR | typeexpr(%s)' % (typeexpr)
+        # print 'ERR | typeexpr(%s)' % (typeexpr)
         self.error(NameError, 'type(%s) is not defined or cannot be parsed: %s' % (repr(typeexpr), repr(line)))
         return None
-
 
     def toValue(self, s):
         # 0 / 128 / 0667 / 0o667 / 0x5dfe / 0b1101
@@ -1224,7 +1157,6 @@ class EqParser(Parser):
 
         return None
 
-
     @staticmethod
     def _wipeChars(s, chars, bchars):
         lst = list()
@@ -1240,9 +1172,8 @@ class EqParser(Parser):
 
             if c == sep:
                 sep = None
-                
-        return ''.join(lst)
 
+        return ''.join(lst)
 
     @staticmethod
     def _splitWithPairs(s, seps, pairDict):
@@ -1254,7 +1185,7 @@ class EqParser(Parser):
         # '(x, y), (z, "(dd", aa)'
         push = {pair[0]: (pair[1], level) for pair, level in pairDict.iteritems()}
         pop = {pair[1]: pair[0] for pair in pairDict.iterkeys()}
-        
+
         res = list()
         stack = list()
         start = 0
@@ -1273,18 +1204,16 @@ class EqParser(Parser):
         res.append(s[start: end])
         return res
 
-
     def _func_print(self, *rvals):
         for rval in rvals:
             print rval,
         print
-        
 
     def _func_import(self, *rfiles):
         for rfile in rfiles:
             with file(rfile, 'r') as fp:
                 self.execute(fp.read(), pylocals=self._pylocals)
-    
+
 
 def main():
     p = EqParser()
@@ -1308,12 +1237,12 @@ def main():
     png.decode(data)
     print png.dump()
     p.unrefValCache()
-    #exit(0)
+    # exit(0)
 
     import json
     d = png.dump(mode='dict', transform=True)
     s = json.dumps(d)
-    #print s
+    # print s
 
     import socket
     import sys
@@ -1325,7 +1254,6 @@ def main():
     eth:ETH
     '''
 
-    
     def getData():
         useSock = 'AF_PACKET' in dir(socket)
         data = None
@@ -1338,9 +1266,9 @@ def main():
                 try:
                     while True:
                         data, addr = sock.recvfrom(0xFFFF)
-                        #proto, = struct.unpack('!H', data[12:14])
-                        #fp.write(struct.pack('I', len(data)))
-                        #fp.write(data)
+                        # proto, = struct.unpack('!H', data[12:14])
+                        # fp.write(struct.pack('I', len(data)))
+                        # fp.write(data)
                         yield data
                 except KeyboardInterrupt, msg:
                     print 'KeyboardInterrupt', msg
@@ -1363,15 +1291,13 @@ def main():
                     print 'KeyboardInterrupt', msg
 
         yield data
-    
-    
+
     def xcall(func, *l, **d):
         try:
             return func(*l, **d)
         except Exception, msg:
             print 'Exception:', msg
             return None
-
 
     p.execute(text, pylocals=locals())
     eth = p.getVar('eth')
@@ -1381,27 +1307,29 @@ def main():
         for data in getData():
             if data == None:
                 break
-            
-            #xcall(eth.decode, data)
+
+            # xcall(eth.decode, data)
             eth.decode(data)
 
             proto = p.getValue('eth.ethHdr.type')
-            #if proto != dpkt.ethernet.ETH_TYPE_IP:
-                #print hex(proto)
+            # if proto != dpkt.ethernet.ETH_TYPE_IP:
+            # print hex(proto)
             if proto in (dpkt.ethernet.ETH_TYPE_ARP, dpkt.ethernet.ETH_TYPE_IP):
                 print eth.dump()
                 if proto == dpkt.ethernet.ETH_TYPE_ARP:
                     srcIp = p.getValue('eth.ethBody.arp.srcIp')
-                    #print eth.dump(), len(data)
+                    # print eth.dump(), len(data)
                     if not srcIp in devinfos:
                         srcMac = p.getValue('eth.ethBody.arp.srcMac')
                         devinfos[srcIp] = {'mac': srcMac}
-                        #print eth.dump()
+                        # print eth.dump()
                         print 'new %s %s' % (srcMac, srcIp)
                 elif proto == dpkt.ethernet.ETH_TYPE_IP:
                     srcIp = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.srcIp')
                     ipProto = p.getValue('eth.ethBody.ip.ipHdr.ipFixed.proto')
-                    if not srcIp in ('45.77.23.212', '192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92', '192.168.1.101'):
+                    if not srcIp in (
+                    '45.77.23.212', '192.168.50.179', '192.168.50.238', '127.0.0.1', '10.8.73.67', '10.8.73.92',
+                    '192.168.1.101'):
                         print ipProto, srcIp
                         if ipProto == dpkt.ip.IP_PROTO_TCP:
                             tcpData = p.getValue('eth.ethBody.ip.ipBody.tcp.tcpBody.data')
@@ -1409,6 +1337,6 @@ def main():
                             fp.write(tcpData + '\n\n')
                             fp.flush()
 
+
 if __name__ == '__main__':
     main()
-

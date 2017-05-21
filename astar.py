@@ -8,11 +8,13 @@ CC_YELLOW_BEGIN = '\033[0;33m'
 CC_BLUE_BEGIN = '\033[0;34m'
 CC_END = '\033[0m'
 
+
 def createMap(width, height):
     ret = []
     for ln in xrange(height):
         ret.append([0] * width)
     return ret
+
 
 def printNode(node):
     s = '%02X' % (node)
@@ -26,11 +28,14 @@ def printNode(node):
         s = CC_BLUE_BEGIN + s + CC_END
     sys.stdout.write(s)
 
+
 def printSpace():
     sys.stdout.write(' ')
 
+
 def printLf():
     sys.stdout.write('\n')
+
 
 def printMap(mp):
     for ln in mp:
@@ -40,27 +45,29 @@ def printMap(mp):
         printLf()
     sys.stdout.flush()
 
+
 def getHeight(mp):
     return len(mp)
 
+
 def getWidth(mp):
     return len(mp[0])
+
 
 def setNode(mp, x, y, v):
     mp[y][x] = v
 
 
-
 def astar(mp, start, end):
     width = getWidth(mp)
     height = getHeight(mp)
+
     def getH(node, end):
         return (abs(node[0] - end[0]) + abs(node[1] - end[1])) * 10
 
-
     openNodes = dict()
     closeNodes = dict()
-    
+
     openNodes[start] = {'parent': None, 'g': 0, 'h': getH(start, end)}
     openNodes[start]['f'] = openNodes[start]['g'] + openNodes[start]['h']
 
@@ -79,22 +86,23 @@ def astar(mp, start, end):
         closeNodes[minFNode] = openNodes.pop(minFNode)
 
         nextNodes = {
-                (minFNode[0] - 1, minFNode[1] - 1) : 14,
-                (minFNode[0] - 1, minFNode[1]) : 10,
-                (minFNode[0] - 1, minFNode[1] + 1) : 14,
-                (minFNode[0], minFNode[1] - 1) : 10,
-                (minFNode[0], minFNode[1] + 1) : 10,
-                (minFNode[0] + 1, minFNode[1] - 1) : 14,
-                (minFNode[0] + 1, minFNode[1]) : 10,
-                (minFNode[0] + 1, minFNode[1] + 1) : 14}
-        
+            (minFNode[0] - 1, minFNode[1] - 1): 14,
+            (minFNode[0] - 1, minFNode[1]): 10,
+            (minFNode[0] - 1, minFNode[1] + 1): 14,
+            (minFNode[0], minFNode[1] - 1): 10,
+            (minFNode[0], minFNode[1] + 1): 10,
+            (minFNode[0] + 1, minFNode[1] - 1): 14,
+            (minFNode[0] + 1, minFNode[1]): 10,
+            (minFNode[0] + 1, minFNode[1] + 1): 14}
+
         for nextNode, incG in nextNodes.iteritems():
             if nextNode[0] < 0 or nextNode[0] >= height or nextNode[1] < 0 or nextNode[1] >= width:
                 continue
 
-            if mp[minFNode[0]][nextNode[1]] == 4 or mp[nextNode[0]][minFNode[1]] == 4 or mp[nextNode[0]][nextNode[1]] == 4 or nextNode in closeNodes:
+            if mp[minFNode[0]][nextNode[1]] == 4 or mp[nextNode[0]][minFNode[1]] == 4 or mp[nextNode[0]][
+                nextNode[1]] == 4 or nextNode in closeNodes:
                 continue
-            
+
             nextNodeG = minFNodeInfo['g'] + incG
             if not nextNode in openNodes:
                 nextNodeInfo = {'parent': minFNode}
@@ -149,7 +157,7 @@ def main():
     mp[4][7] = 4
     mp[3][7] = 4
     mp[2][7] = 4
-    #printMap(mp)
+    # printMap(mp)
     start = (0, 0)
     end = (17, 17)
     closeNodes = astar(mp, start, end)
@@ -161,6 +169,6 @@ def main():
             curNode = curNodeInfo['parent']
     printMap(mp)
 
+
 if __name__ == '__main__':
     main()
-
