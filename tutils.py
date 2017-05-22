@@ -752,6 +752,7 @@ if __name__ == '__main__':
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help="Address of local host, like 0.0.0.0:1234")
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help="Address of remote host, like 192.168.1.101:1234")
+    op.add_option('-c', '--command', action='store', dest='cmd', type=str, help="Command to be run, when connect")
 
     (opts, args) = op.parse_args()
 
@@ -775,6 +776,7 @@ if __name__ == '__main__':
         else:
             rhost, rport = None, None
 
+        cmd = opts.cmd
         daemon = opts.daemon
 
     except:
@@ -787,5 +789,5 @@ if __name__ == '__main__':
     if 'HOME' in os.environ:
         os.chdir(os.environ['HOME'])
 
-    ptyPipe(env, who, host=host, port=port, rhost=rhost, rport=rport)
+    ptyPipe(env, who, host=host, port=port, rhost=rhost, rport=rport, cmd=cmd)
 
