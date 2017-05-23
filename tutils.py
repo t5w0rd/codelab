@@ -17,6 +17,7 @@ import multiprocessing
 import re
 import select
 import ctypes
+import struct
 
 
 __all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
@@ -306,13 +307,33 @@ def tcpRawStdIO(tcp, eof_break=True):
 # DATA(CMD_DATA) = length:uint16@ + data:string(length)
 # DATA() = none:string(0)
 
-def _packConnect(pbuf, sid, addr):
-    struct.pack('!I4sH', sid, socket.inet_aton(addr[0]), addr[1])
+def _packConnect(sid, addr):
+    return struct.pack('!IB4sH', sid, 1, socket.inet_aton(addr[0]), addr[1])
+
+def _unpackConnect(buf, pos):
+    n, port = struct.unpack_from('!4sH', buf, pos)
+    addr = socket.inet_ntoa(n)
+    addr, port
+
+def _packData(sid, data):
+    return struct.pack('!IBH%us' % (len(data),), sid, 2, len(data), data)
+
+def _unpackData(buf, pos):
+    length = struct.unpack_from('!H', buf, pos)
+    pos += struct.calcsize('!H')
+    data = struct.unpack_from('%us' % (length,), buf, pos)
+    return length, data
+
+def _packClose(sid):
+    return struct.pack('!IB', sid)
+
 def tcpPortProxy(tcp, binds):
     '''binds: [(lhost, lport), (rhost, rport)]'''
     binds = list(binds)
     lstnMap = {}
-    connMap = {}
+    conn2sidMap = {}
+    sid2connMap = {}
+
     rfds = [tcp,]
     for laddr, raddr in binds:
         lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
@@ -324,25 +345,71 @@ def tcpPortProxy(tcp, binds):
         except:
             lstn.close()
     
-    pbuf = SldeBuf()
-    idgen = 1
+    pSndbuf = SldeBuf()
+    pRcvbuf = SldeBuf()
+    toRecv = pRcvbuf.headerSize
+    sidgen = 1
     while True:
         rlist, _, _ = select.select(rfds, [], [], 1)
-        # check listen socket first
         for rfd in rlist:
-            if rfd in lstnMap:
+            if rfd == tcp:
+                # from remote agent, proto buf
+                s = rfd.recv(toRecv)
+                left = pRcvbuf.write(s)
+                if left is None:
+                    # wrong data
+                    print 'wrong data'
+                    pass
+                elif left > 0:
+                    # n bytes left
+                    toRecv = left
+                elif left == 0:
+                    # complete proto buf
+                    toRecv = pRcvBuf.headerSize
+                    buf = ctypes.create_string_buffer(pRcvbuf.decode())
+                    pRcvbuf.clear()
+
+                    pos = 0
+                    sid, cmd = struct.unpack_from('!IB', buf, pos)
+                    pos += struct.calcsize('!IB')
+                    conn = sid2connMap[sid]
+                    if cmd == 2:
+                        # data
+                        length, data = _unpackData(buf, pos)
+                        assert(len(data) == length)
+                        conn.sendall(data)
+                    elif cmd = 3:
+                        # close, remove conn info
+                        rfds.remove(conn)
+                        conn2sidMap.pop(conn)
+                        sid2connMap.pop(sid)
+                        conn.close()
+
+            elif rfd in lstnMap:
                 # new connection
                 conn, addr = rfd.accept()
-                # set conn info
-                connMap[conn] = rfd
+                sid = sidgen
+                sidgen += 1
+
+                # append conn info
+                rfds.append(conn)
+                conn2sidMap[conn] = sid
+                sid2connMap[sid] = conn
+
                 # tell peer
-                buf = pbuf.encode('')
-                tcp.sendall()
+                pSndbuf.clear()
+                buf = pSndbuf.encode(_packConnect(sid, lstnMap[rfd]))
+                tcp.sendall(buf)
             else:
                 # connection socket can be read
+                assert(rfd in conn2sidMap)
+                sid = conn2sidMap[rfd]
+                s = rfd.recv(0xffff)
 
-
-
+                # tel peer
+                pSndBuf.clear()
+                buf = pSndbuf.encode(_packData(sid, s))
+                tcp.sendall(buf)
 
 def tcpPortAgent(tcp):
     pass
