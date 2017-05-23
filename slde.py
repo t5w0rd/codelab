@@ -2,7 +2,6 @@
 
 import struct
 import ctypes
-import socket
 
 
 STX = 2

@@ -15,9 +15,11 @@ import json
 import logging
 import multiprocessing
 import re
+import select
+import ctypes
 
 
-__all__ = ['XNet', 'net', 'daemonize', 'multijobs', 'initLogger', 'StopWatch']
+__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
 
 
 class Net:
@@ -295,6 +297,56 @@ def tcpRawStdIO(tcp, eof_break=True):
         if restore:
             tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
 
+
+# PORT_PROXY = sid:uint32@ + cmd:uint8 + data:DATA(cmd)
+# CMD_CONNECT:uint8 = 1
+# CMD_DATA:uint8 = 2
+# CMD_CLOSE:uint8 = 3
+# DATA(CMD_CONNECT) = host:IPv4 + port:uint16@
+# DATA(CMD_DATA) = length:uint16@ + data:string(length)
+# DATA() = none:string(0)
+
+def _packConnect(pbuf, sid, addr):
+    struct.pack('!I4sH', sid, socket.inet_aton(addr[0]), addr[1])
+def tcpPortProxy(tcp, binds):
+    '''binds: [(lhost, lport), (rhost, rport)]'''
+    binds = list(binds)
+    lstnMap = {}
+    connMap = {}
+    rfds = [tcp,]
+    for laddr, raddr in binds:
+        lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+        try:
+            lstn.bind(laddr)
+            lstnMap[lstn] = raddr
+            rfds.append(lstn)
+            lstn.listen(5)
+        except:
+            lstn.close()
+    
+    pbuf = SldeBuf()
+    idgen = 1
+    while True:
+        rlist, _, _ = select.select(rfds, [], [], 1)
+        # check listen socket first
+        for rfd in rlist:
+            if rfd in lstnMap:
+                # new connection
+                conn, addr = rfd.accept()
+                # set conn info
+                connMap[conn] = rfd
+                # tell peer
+                buf = pbuf.encode('')
+                tcp.sendall()
+            else:
+                # connection socket can be read
+
+
+
+
+def tcpPortAgent(tcp):
+    pass
+
 class XNet(Net):
     def __init__(self):
         Net.__init__(self)
@@ -433,7 +485,7 @@ class XNet(Net):
 
 
     def udpNatTrvServer(self, host, port):
-        keyAddr = dict()
+        keyAddr = {}
         self.bindu(host, port)
         while True:
             data = self.recvfrom()
@@ -635,7 +687,6 @@ def multijobs(target, args, workers=None):
 
 try:
     import SocketServer
-    import slde
     import proto
 
     class _TcpServerHandler(SocketServer.BaseRequestHandler):
@@ -668,7 +719,7 @@ try:
                 data = json.loads(data)
                 cmd = data['cmd']
                 if cmd == 'list':
-                    rsp = {'cmd': cmd, 'clients': list()}
+                    rsp = {'cmd': cmd, 'clients': []}
                     for addr, info in self.server.reqs.items():
                         rsp['clients'].append(addr)
                     self.response(rsp)
@@ -692,7 +743,7 @@ try:
         def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
             self.manager = multiprocessing.Manager()
             self.msgq = self.manager.Queue()
-            self.reqs = self.manager.dict()
+            self.reqs = self.manager.{}
             SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
 
         def serve_forever(self, poll_interval=0.5):
@@ -772,6 +823,70 @@ class StopWatch:
 
     def logs(self):
         return self._logs
+
+
+STX = 2
+ETX = 3
+LENGTH_SIZE = 2
+HEADER_SIZE = LENGTH_SIZE + 1
+
+class SldeBuf:
+    '''slde = stx:uint8 + length:uint16@ + data:string(length) + etx:uint8'''
+    headerSize = HEADER_SIZE
+
+    def __init__(self):
+        self.clear()
+
+    def clear(self):
+        self.pos = None
+        self.writebuf = None
+
+    def write(self, buf):
+        '''write headerSize bytes for first, return next bytes to write.if return None, failed.'''
+        if self.pos == None and len(buf) >= self.headerSize:
+            stx, length = struct.unpack_from('!BH', buf)
+            if stx == STX and length <= 0xffff:
+                self.length = length
+                left = length + 1
+                self.writebuf = ctypes.create_string_buffer(self.headerSize + left)
+                ctypes.memmove(self.writebuf, buf, self.headerSize)
+                self.pos = self.headerSize
+                more = len(buf) - self.headerSize
+                if more > 0:
+                    buf = buf[more:]
+                else:
+                    return left
+            else:
+                return None
+        
+        left = self.length - self.pos - len(buf) + self.headerSize + 1
+        if left < 0:
+            # beyond the length
+            return None
+
+        ctypes.memmove(ctypes.addressof(self.writebuf) + self.pos, buf, len(buf))
+        self.pos += len(buf)
+        if left > 0:
+            return left
+
+        # write finished.
+        magic, = struct.unpack_from('B', self.writebuf, self.headerSize + self.length)
+        if magic == ETX:
+            self.pos = None
+            return 0
+
+        return None
+
+    def decode(self):
+        '''when'''
+        if self.pos == None and self.writebuf != None:
+            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)
+
+    def encode(self, data):
+        if len(data) <= 0xffff:
+            encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
+            struct.pack_into('!BH%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
+            return encodebuf
 
 
 if __name__ == '__main__':
