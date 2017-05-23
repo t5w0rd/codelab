@@ -53,10 +53,13 @@ class Net:
         self._tcp = tcp
         self._tcp.connect((host, port))
 
-    def laddr():
+    def tcp(self):
+        return self._tcp
+
+    def laddr(self):
         return self._tcp.getsockname()
 
-    def raddr():
+    def raddr(self):
         return self._tcp.getpeername()
 
     def attach(self, tcp):
@@ -146,6 +149,9 @@ class Net:
         self._udp.close()
         self._udp, self._addru = None, None
 
+    def udp(self):
+        return self._udp
+
     def addru(self):
         return self._addru
 
@@ -183,55 +189,10 @@ class Net:
         self._tcp.settimeout(timeout)
 
     def rpty(self, cmd, close_wait=0):
-        '''remote execute, I/O from tcp.
-        when the connection closed, what child for close_wait seconds. -1: wait until child exits.'''
-        tcp_fd = self._tcp.fileno()
-
-        pid, master_fd = pty.fork()
-        if pid == pty.CHILD:
-            if type(cmd)== str:
-                cmd = cmd.split()
-            os.execvp(cmd[0], cmd)
-
-        buf = array.array('H', [25, 80, 0, 0])
-        try:
-            fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
-        except Exception:
-            pass
-        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, buf)
-
-        try:
-            _copyLoop(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
-        except (IOError, OSError):
-            #print '$copy loop error'
-            pass
-        if close_wait >= 0:
-            time.sleep(close_wait)
-            os.kill(pid, 9)
-        os.wait()
-        os.close(master_fd)
+        tcpPtyIO(self._tcp, cmd, close_wait=close_wait)
 
     def lpty(self, eof_break=True):
-        '''I/O from tcp.
-        eof_break: True, when reached stdin eof, the copy loop will be break.'''
-        tcp_fd = self._tcp.fileno()
-        restore = 0
-        try:
-            mode = tty.tcgetattr(pty.STDIN_FILENO)
-            tty.setraw(pty.STDIN_FILENO)
-            restore = 1
-        except tty.error:    # This is the same as termios.error
-            pass
-        
-        try:
-            _copyLoop(read_fd=tcp_fd, write_fd=tcp_fd, eof2_break=eof_break)
-        except (IOError, OSError):
-            #print '$copy loop error'
-            pass
-        finally:
-            if restore:
-                tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
-        
+        tcpRawStdIO(self._tcp, eof_break=eof_break)
 
 def _write(fd, data):
     """Write all the data to a descriptor."""
@@ -284,24 +245,74 @@ def _rpty(net):
 def _lpty(net):
     net.lpty()
 
+def tcpPtyIO(tcp, cmd, close_wait=0):
+    '''remote execute, I/O from tcp.
+    when the connection closed, what child for close_wait seconds. -1: wait until child exits.'''
+    tcp_fd = tcp.fileno()
+
+    pid, master_fd = pty.fork()
+    if pid == pty.CHILD:
+        if type(cmd)== str:
+            cmd = cmd.split()
+        os.execvp(cmd[0], cmd)
+
+    buf = array.array('H', [25, 80, 0, 0])
+    try:
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+    except Exception:
+        pass
+    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, buf)
+
+    try:
+        _copyLoop(read_fd=master_fd, write_fd=master_fd, read2_fd=tcp_fd, write2_fd=tcp_fd)
+    except (IOError, OSError):
+        #print '$copy loop error'
+        pass
+    if close_wait >= 0:
+        time.sleep(close_wait)
+        os.kill(pid, 9)
+    os.wait()
+    os.close(master_fd)
+
+def tcpRawStdIO(tcp, eof_break=True):
+    '''I/O from tcp.
+    eof_break: True, when reached stdin eof, the copy loop will be break.'''
+    tcp_fd = tcp.fileno()
+    restore = 0
+    try:
+        mode = tty.tcgetattr(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO)
+        restore = 1
+    except tty.error:    # This is the same as termios.error
+        pass
+    
+    try:
+        _copyLoop(read_fd=tcp_fd, write_fd=tcp_fd, eof2_break=eof_break)
+    except (IOError, OSError):
+        #print '$copy loop error'
+        pass
+    finally:
+        if restore:
+            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+
 class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def positivePtyServer(self, host, port, handler=_rpty):
+    def positiveServer(self, host, port, handler=_rpty):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
             handler(self)
             self.close()
 
-    def positivePtyClient(self, host, port, handler=_lpty):
+    def positiveClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.connect(host, port)
         handler(self)
         self.close()
 
-    def reversePtyServer(self, host, port, interval=1, handler=_rpty):
+    def reverseServer(self, host, port, interval=1, handler=_rpty):
         '''socket <-> pty'''
         while True:
             try:
@@ -314,7 +325,7 @@ class XNet(Net):
 
             time.sleep(interval)
 
-    def reversePtyClient(self, host, port, handler=_lpty):
+    def reverseClient(self, host, port, handler=_lpty):
         '''stdio <-> socket'''
         self.listen(host, port)
         handler(self)
@@ -476,10 +487,23 @@ def _ptyPipe_ps2rc(args):
             _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
         
         rc_net = XNet()  # reverse client
-        rc_net.reversePtyClient(rs_host, rs_port, handler=rcHandler)
+        rc_net.reverseClient(rs_host, rs_port, handler=rcHandler)
     
     ps_net = XNet()  # positive server
-    ps_net.positivePtyServer(ps_host, ps_port, handler=psHandler)
+    ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
+
+def _ptyPipe_ps(args):
+    '''positive server.'''
+    ps_host = args['host']  # positive server listen host
+    ps_port = args['port']  # positive server listen port
+    cmd = args['cmd']
+    
+    def psHandler(ps_net):
+        #print 'remote connection: %s:%d' % ps_net.raddr()
+        ps_net.rpty(cmd)
+
+    ps_net = XNet()
+    ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
 
 def _ptyPipe_pc(args):
     '''positive client.'''
@@ -487,7 +511,7 @@ def _ptyPipe_pc(args):
     ps_port = args['rport']  # positive server listen port
 
     pc_net = XNet()
-    pc_net.positivePtyClient(ps_host, ps_port)
+    pc_net.positiveClient(ps_host, ps_port)
 
 def _ptyPipe_rs(args):
     '''reverse server.'''
@@ -500,7 +524,7 @@ def _ptyPipe_rs(args):
         rs_net.rpty(cmd)
 
     rs_net = XNet()
-    rs_net.reversePtyServer(rs_host, rs_port, handler=rsHandler)
+    rs_net.reverseServer(rs_host, rs_port, handler=rsHandler)
 
 def _ptyPipe_rc(args):
     '''reverse client.'''
@@ -508,7 +532,7 @@ def _ptyPipe_rc(args):
     rs_port = args['port']  # reverse server port
 
     rc_net = XNet()
-    rc_net.reversePtyClient(rs_host, rs_port)
+    rc_net.reverseClient(rs_host, rs_port)
 
 def ptyPipe(env, who, **args):
     '''who:
@@ -527,19 +551,29 @@ def ptyPipe(env, who, **args):
     '''
 
     if env == 'tsM':
-        if who == 'M':
-            _ptyPipe_ps2rc(args)
-        elif who == 's':
+        if who == 's':
             _ptyPipe_pc(args)
+        elif who == 'M':
+            _ptyPipe_ps2rc(args)
         elif who == 't':
             _ptyPipe_rs(args)
     elif env == 'sMt':
-        raise Exception('Not supported')
+        if who == 's':
+            _ptyPipe_pc(args)
+        elif who == 'M':
+            raise Exception('Not supported')
+        elif who == 't':
+            _ptyPipe_ps(args)
     elif env == 'tS':
         if who == 'S':
             _ptyPipe_rc(args)
         elif who == 't':
             _ptyPipe_rs(args)
+    elif env == 'sT':
+        if who == 's':
+            _ptyPipe_pc(args)
+        elif who == 'T':
+            _ptyPipe_ps(args)
     else:
         raise Exception('Not supported')
 
@@ -610,7 +644,6 @@ try:
             self.buf = slde.SldeBuf()
 
             SocketServer.BaseRequestHandler.__init__(self, req, addr, server)
-            
 
         def setup(self):
             #self.server.msgq.put({'cmd': 'add', 'req': self})
@@ -745,7 +778,7 @@ if __name__ == '__main__':
     from optparse import OptionParser
 
     op = OptionParser()
-    op.set_usage('''%prog <ENV> <WHO> [options]\n  ENV\tEnvironment: tsM/tS\n  WHO\tWho: t/s/M/S''')
+    op.set_usage('''%prog <ENV> <WHO> [options]\n  ENV\tEnvironment: tsM/sMt/tS/sT\n  WHO\tWho: s/S/t/T/M''')
 
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help="Environment, must be set. (tsM/tS)")
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help="Who, must be set. (s/t/M/S)")
