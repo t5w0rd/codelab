@@ -199,10 +199,10 @@ class Net:
     def lpty(self, eof_break=True):
         tcpRawStdIO(self._tcp, eof_break=eof_break)
 
-    def rmapping(self):
+    def rmap(self):
         tcpMappingAgent(self._tcp)
 
-    def lmapping(self, addr_pairs):
+    def lmap(self, addr_pairs):
         tcpMappingProxy(self._tcp, addr_pairs)
 
 def _write(fd, data):
@@ -257,12 +257,12 @@ def _rpty(net, **args):
 def _lpty(net, **args):
     net.lpty()
 
-def _rmapping(net, **args):
-    net.rmapping()
+def _rmap(net, **args):
+    net.rmap()
 
-def _lmapping(net, **args):
+def _lmap(net, **args):
     addr_pairs = args['addr_pairs']
-    net.lmapping(addr_pairs)
+    net.lmap(addr_pairs)
 
 def tcpPtyIO(tcp, cmd, close_wait=0):
     '''remote execute, I/O from tcp.
@@ -1079,7 +1079,7 @@ if __name__ == '__main__':
     import optparse
 
     op = optparse.OptionParser()
-    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/port)')
+    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map)')
     #op = optparse.OptionGroup(op, 'pty pipe')
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
@@ -1150,20 +1150,20 @@ if __name__ == '__main__':
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport)
 
-        elif function == 'port':
+        elif function == 'map':
             assert(cstype)
             assert(not ((cstype == 'pc' or cstype == 'rc') and not addr_pairs))
             assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
             assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
-                _net.positiveClient(rhost, rport, handler=_lmapping, addr_pairs=addr_pairs)
+                _net.positiveClient(rhost, rport, handler=_lmap, addr_pairs=addr_pairs)
             elif cstype == 'ps':
-                _net.positiveServer(host, port, handler=_rmapping)
+                _net.positiveServer(host, port, handler=_rmap)
             elif cstype == 'rc':
-                _net.reverseClient(host, port, handler=_lmapping, addr_pairs=addr_pairs)
+                _net.reverseClient(host, port, handler=_lmap, addr_pairs=addr_pairs)
             elif cstype == 'rs':
-                _net.reverseServer(rhost, rport, handler=_rmapping)
+                _net.reverseServer(rhost, rport, handler=_rmap)
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport)
 
