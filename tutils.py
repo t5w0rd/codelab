@@ -1166,6 +1166,8 @@ if __name__ == '__main__':
                 _net.reverseServer(rhost, rport, handler=_rmap)
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport)
+        else:
+            assert(not 'unsupported FUNCTION')
 
     except AssertionError:
         traceback.print_exc()
