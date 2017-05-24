@@ -202,8 +202,8 @@ class Net:
     def rmap(self):
         tcpMappingAgent(self._tcp)
 
-    def lmap(self, addr_pairs):
-        tcpMappingProxy(self._tcp, addr_pairs)
+    def lmap(self, mapping):
+        tcpMappingProxy(self._tcp, mapping)
 
 def _write(fd, data):
     """Write all the data to a descriptor."""
@@ -261,8 +261,8 @@ def _rmap(net, **args):
     net.rmap()
 
 def _lmap(net, **args):
-    addr_pairs = args['addr_pairs']
-    net.lmap(addr_pairs)
+    mapping = args['mapping']
+    net.lmap(mapping)
 
 def tcpPtyIO(tcp, cmd, close_wait=0):
     '''remote execute, I/O from tcp.
@@ -348,16 +348,16 @@ def _unpackData(buf, pos):
 def _packClose(sid):
     return struct.pack('!IB', sid, CMD_CLOSE)
 
-def tcpMappingProxy(tcp, addr_pairs):
-    '''addr_pairs: [((lhost, lport), (rhost, rport)), ...]'''
+def tcpMappingProxy(tcp, mapping):
+    '''mapping: [((lhost, lport), (rhost, rport)), ...]'''
     _log.info('tcp port proxy start')
-    return _tcpForwardPort(tcp, True, addr_pairs)
+    return _tcpForwardPort(tcp, True, mapping)
 
 def tcpMappingAgent(tcp):
     _log.info('tcp port agent start')
     return _tcpForwardPort(tcp, False, None)
 
-def _tcpForwardPort(tcp, isproxy, addr_pairs):
+def _tcpForwardPort(tcp, isproxy, mapping):
     rfds = [tcp,]
     lstnMap = {}
     conn2sidMap = {}
@@ -367,11 +367,11 @@ def _tcpForwardPort(tcp, isproxy, addr_pairs):
     toRecv = rcvBuf.headerSize
 
     if isproxy:
-        assert(addr_pairs)
+        assert(mapping)
         who = 'proxy'
-        addr_pairs = list(addr_pairs)
+        mapping = list(mapping)
         sidgen = 1
-        for laddr, raddr in addr_pairs:
+        for laddr, raddr in mapping:
             lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
             lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, 'SO_REUSEPORT'):
@@ -1084,11 +1084,11 @@ if __name__ == '__main__':
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
     op.add_option('-t', '--type', action='store', dest='type', type=str, help='type, positive or reverse, client or server, must be set (pc/ps/rc/rs/psrc)')
-    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
-    op.add_option('-p', '--address-pairs', action='store', dest='addr_pairs', type=str, help='forward port address pairs, like 0.0.0.0:10022,localhost:22;localhost:80,localhost:80')
+    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='address mapping pairs, like 0.0.0.0:10022,localhost:22;localhost:80,localhost:80')
+    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
 
     #op.add_option_group(opg)
 
@@ -1114,17 +1114,17 @@ if __name__ == '__main__':
     else:
         rhost, rport = None, None
 
-    if opts.addr_pairs:
-        addr_pairs = []
-        for pair in opts.addr_pairs.split(';'):
+    if opts.mapping:
+        mapping = []
+        for pair in opts.mapping.split(';'):
             laddr, raddr = pair.split(',')
             _host, _port = laddr.split(':')
             _port = int(_port)
             _rhost, _rport = raddr.split(':')
             _rport = int(_rport)
-            addr_pairs.append(((_host, _port), (_rhost, _rport)))
+            mapping.append(((_host, _port), (_rhost, _rport)))
     else:
-        addr_pairs = None
+        mapping = None
     
     if daemon:
         daemonize()
@@ -1152,16 +1152,16 @@ if __name__ == '__main__':
 
         elif function == 'map':
             assert(cstype)
-            assert(not ((cstype == 'pc' or cstype == 'rc') and not addr_pairs))
+            assert(not ((cstype == 'pc' or cstype == 'rc') and not mapping))
             assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
             assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
-                _net.positiveClient(rhost, rport, handler=_lmap, addr_pairs=addr_pairs)
+                _net.positiveClient(rhost, rport, handler=_lmap, mapping=mapping)
             elif cstype == 'ps':
                 _net.positiveServer(host, port, handler=_rmap)
             elif cstype == 'rc':
-                _net.reverseClient(host, port, handler=_lmap, addr_pairs=addr_pairs)
+                _net.reverseClient(host, port, handler=_lmap, mapping=mapping)
             elif cstype == 'rs':
                 _net.reverseServer(rhost, rport, handler=_rmap)
             elif cstype == 'psrc':
