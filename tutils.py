@@ -19,6 +19,8 @@ import select
 import ctypes
 import struct
 
+import traceback
+
 
 __all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
 
@@ -197,6 +199,12 @@ class Net:
     def lpty(self, eof_break=True):
         tcpRawStdIO(self._tcp, eof_break=eof_break)
 
+    def rmapping(self):
+        tcpMappingAgent(self._tcp)
+
+    def lmapping(self, addr_pairs):
+        tcpMappingProxy(self._tcp, addr_pairs)
+
 def _write(fd, data):
     """Write all the data to a descriptor."""
     while data != '':
@@ -241,12 +249,20 @@ def _copyLoop(read_fd, write_fd, read2_fd=pty.STDIN_FILENO, write2_fd=pty.STDOUT
                 write_func(write_fd, data)
 
 
-def _rpty(net):
+def _rpty(net, **args):
+    cmd = args['cmd']
     #print 'remote connection: %s:%d' % net.raddr()
-    net.rpty('bash')
+    net.rpty(cmd)
 
-def _lpty(net):
+def _lpty(net, **args):
     net.lpty()
+
+def _rmapping(net, **args):
+    net.rmapping()
+
+def _lmapping(net, **args):
+    addr_pairs = args['addr_pairs']
+    net.lmapping(addr_pairs)
 
 def tcpPtyIO(tcp, cmd, close_wait=0):
     '''remote execute, I/O from tcp.
@@ -299,7 +315,7 @@ def tcpRawStdIO(tcp, eof_break=True):
             tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
 
 
-# PORT_PROXY = sid:uint32@ + cmd:uint8 + data:DATA(cmd)
+# ADDR_MAPPING = sid:uint32@ + cmd:uint8 + data:DATA(cmd)
 # CMD_CONNECT:uint8 = 1
 # CMD_DATA:uint8 = 2
 # CMD_CLOSE:uint8 = 3
@@ -307,89 +323,186 @@ def tcpRawStdIO(tcp, eof_break=True):
 # DATA(CMD_DATA) = length:uint16@ + data:string(length)
 # DATA() = none:string(0)
 
+CMD_CONNECT = 1
+CMD_DATA = 2
+CMD_CLOSE = 3
+
 def _packConnect(sid, addr):
-    return struct.pack('!IB4sH', sid, 1, socket.inet_aton(addr[0]), addr[1])
+    host, port = addr
+    return struct.pack('!IB4sH', sid, CMD_CONNECT, socket.inet_aton(socket.gethostbyname(host)), port)
 
 def _unpackConnect(buf, pos):
     n, port = struct.unpack_from('!4sH', buf, pos)
-    addr = socket.inet_ntoa(n)
-    addr, port
+    host = socket.inet_ntoa(n)
+    return host, port
 
 def _packData(sid, data):
-    return struct.pack('!IBH%us' % (len(data),), sid, 2, len(data), data)
+    return struct.pack('!IBH%us' % (len(data),), sid, CMD_DATA, len(data), data)
 
 def _unpackData(buf, pos):
-    length = struct.unpack_from('!H', buf, pos)
+    length, = struct.unpack_from('!H', buf, pos)
     pos += struct.calcsize('!H')
-    data = struct.unpack_from('%us' % (length,), buf, pos)
+    data, = struct.unpack_from('%us' % (length,), buf, pos)
     return length, data
 
 def _packClose(sid):
-    return struct.pack('!IB', sid)
+    return struct.pack('!IB', sid, CMD_CLOSE)
 
-def tcpPortProxy(tcp, binds):
-    '''binds: [(lhost, lport), (rhost, rport)]'''
-    binds = list(binds)
+def tcpMappingProxy(tcp, addr_pairs):
+    '''addr_pairs: [((lhost, lport), (rhost, rport)), ...]'''
+    _log.info('tcp port proxy start')
+    return _tcpForwardPort(tcp, True, addr_pairs)
+
+def tcpMappingAgent(tcp):
+    _log.info('tcp port agent start')
+    return _tcpForwardPort(tcp, False, None)
+
+def _tcpForwardPort(tcp, isproxy, addr_pairs):
+    rfds = [tcp,]
     lstnMap = {}
     conn2sidMap = {}
     sid2connMap = {}
+    sndBuf = SldeBuf()
+    rcvBuf = SldeBuf()
+    toRecv = rcvBuf.headerSize
 
-    rfds = [tcp,]
-    for laddr, raddr in binds:
-        lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
-        try:
-            lstn.bind(laddr)
-            lstnMap[lstn] = raddr
-            rfds.append(lstn)
-            lstn.listen(5)
-        except:
-            lstn.close()
-    
-    pSndbuf = SldeBuf()
-    pRcvbuf = SldeBuf()
-    toRecv = pRcvbuf.headerSize
-    sidgen = 1
+    if isproxy:
+        assert(addr_pairs)
+        who = 'proxy'
+        addr_pairs = list(addr_pairs)
+        sidgen = 1
+        for laddr, raddr in addr_pairs:
+            lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+            lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, 'SO_REUSEPORT'):
+                lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            try:
+                _log.info('%s|listen on %s:%u', who, laddr[0], laddr[1])
+                lstn.bind(laddr)
+                lstnMap[lstn] = raddr
+                rfds.append(lstn)
+                lstn.listen(5)
+            except Exception, msg:
+                _log.info('%s|listen failed: %s', who, msg)
+                lstn.close()
+                for lstn in lstnMap.iterkeys():
+                    lstn.close()
+                _log.info('%s|exit', who)
+                return
+    else:
+        who = 'agent'
+
     while True:
         rlist, _, _ = select.select(rfds, [], [], 1)
         for rfd in rlist:
             if rfd == tcp:
                 # from remote agent, proto buf
-                s = rfd.recv(toRecv)
-                left = pRcvbuf.write(s)
+                s = tcp.recv(toRecv)
+                if not s:
+                    # remote connection is closed, clear
+                    _log.info('%s|remote peer closed', who)
+                    tcp.close()
+                    if isproxy:
+                        for lstn in lstnMap.iterkeys():
+                            lstn.close()
+
+                    for conn in conn2sidMap.iterkeys():
+                        conn.close()
+
+                    _log.info('%s|exit', who)
+                    return
+
+                left = rcvBuf.write(s)
                 if left is None:
                     # wrong data
-                    print 'wrong data'
-                    pass
+                    _log.error('%s|bad data from remote peer', who)
+
                 elif left > 0:
                     # n bytes left
                     toRecv = left
+
                 elif left == 0:
                     # complete proto buf
-                    toRecv = pRcvBuf.headerSize
-                    buf = ctypes.create_string_buffer(pRcvbuf.decode())
-                    pRcvbuf.clear()
+                    toRecv = rcvBuf.headerSize
+                    buf = ctypes.create_string_buffer(rcvBuf.decode())
+                    rcvBuf.clear()
+                    _log.info('%s|receive a full proto buf from remote peer', who)
 
                     pos = 0
                     sid, cmd = struct.unpack_from('!IB', buf, pos)
                     pos += struct.calcsize('!IB')
-                    conn = sid2connMap[sid]
-                    if cmd == 2:
-                        # data
+
+                    if cmd == CMD_CONNECT:
+                        # cmd connect
+                        assert(not isproxy)
+                        assert(sid not in sid2connMap)
+                        raddr = _unpackConnect(buf, pos)
+                        _log.info('%s|sid->%u|cmd->connect %s:%u', who, sid, raddr[0], raddr[1])
+                        
+                        # create a new connection
+                        conn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+                        try:
+                            conn.connect(raddr)
+                            # append conn info
+                            rfds.append(conn)
+                            conn2sidMap[conn] = sid
+                            sid2connMap[sid] = conn
+                        except socket.error, msg:
+                            _log.error('%s|connect failed: %s, tell remote peer to close connection', who, msg)
+                            conn.close()
+                            # tell peer
+                            sndBuf.clear()
+                            buf = sndBuf.encode(_packClose(sid))
+                            tcp.sendall(buf)
+
+                    elif cmd == CMD_DATA and sid in sid2connMap:
+                        # cmd send data
+                        _log.info('%s|sid->%u|cmd->send data to connection', who, sid)
+                        conn = sid2connMap[sid]
                         length, data = _unpackData(buf, pos)
                         assert(len(data) == length)
                         conn.sendall(data)
-                    elif cmd = 3:
-                        # close, remove conn info
+
+                    elif cmd == CMD_CLOSE and sid in sid2connMap:
+                        # cmd close, remove conn info
+                        _log.info('%s|sid->%u|cmd->close connection', who, sid)
+                        conn = sid2connMap[sid]
                         rfds.remove(conn)
                         conn2sidMap.pop(conn)
                         sid2connMap.pop(sid)
                         conn.close()
 
+            elif rfd in conn2sidMap:
+                # connection socket can be read
+                sid = conn2sidMap[rfd]
+                s = rfd.recv(0xffff)
+                if not s:
+                    # connection is closed
+                    _log.info('%s|sid->%u|connection closed, tell remote peer to close connection', who, sid)
+                    sid = conn2sidMap[rfd]
+                    rfds.remove(rfd)
+                    conn2sidMap.pop(rfd)
+                    sid2connMap.pop(sid)
+                    rfd.close()
+                    # tell peer
+                    sndBuf.clear()
+                    buf = sndBuf.encode(_packClose(sid))
+                    tcp.sendall(buf)
+                else:
+                    # tell peer
+                    _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
+                    sndBuf.clear()
+                    buf = sndBuf.encode(_packData(sid, s))
+                    tcp.sendall(buf)
+            
             elif rfd in lstnMap:
                 # new connection
+                assert(isproxy)
                 conn, addr = rfd.accept()
                 sid = sidgen
                 sidgen += 1
+                
+                _log.info('%s|sid->%u|new connection, tell remote peer to connect %s:%u', who, sid, lstnMap[rfd][0], lstnMap[rfd][1])
 
                 # append conn info
                 rfds.append(conn)
@@ -397,46 +510,36 @@ def tcpPortProxy(tcp, binds):
                 sid2connMap[sid] = conn
 
                 # tell peer
-                pSndbuf.clear()
-                buf = pSndbuf.encode(_packConnect(sid, lstnMap[rfd]))
+                sndBuf.clear()
+                buf = sndBuf.encode(_packConnect(sid, lstnMap[rfd]))
                 tcp.sendall(buf)
+
             else:
-                # connection socket can be read
-                assert(rfd in conn2sidMap)
-                sid = conn2sidMap[rfd]
-                s = rfd.recv(0xffff)
-
-                # tel peer
-                pSndBuf.clear()
-                buf = pSndbuf.encode(_packData(sid, s))
-                tcp.sendall(buf)
-
-def tcpPortAgent(tcp):
-    pass
+                raise Exception('unknown socket')
 
 class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def positiveServer(self, host, port, handler=_rpty):
+    def positiveServer(self, host, port, handler=_rpty, **args):
         '''socket <-> pty'''
         while True:
             self.listen(host, port)
-            handler(self)
+            handler(self, **args)
             self.close()
 
-    def positiveClient(self, host, port, handler=_lpty):
+    def positiveClient(self, host, port, handler=_lpty, **args):
         '''stdio <-> socket'''
         self.connect(host, port)
-        handler(self)
+        handler(self, **args)
         self.close()
 
-    def reverseServer(self, host, port, interval=1, handler=_rpty):
+    def reverseServer(self, host, port, interval=1, handler=_rpty, **args):
         '''socket <-> pty'''
         while True:
             try:
                 self.connect(host, port)
-                handler(self)
+                handler(self, **args)
                 self.close()
             except socket.error, e:
                 #print e
@@ -444,11 +547,22 @@ class XNet(Net):
 
             time.sleep(interval)
 
-    def reverseClient(self, host, port, handler=_lpty):
+    def reverseClient(self, host, port, handler=_lpty, **args):
         '''stdio <-> socket'''
         self.listen(host, port)
-        handler(self)
+        handler(self, **args)
         self.close()
+
+    def positiveServerThenReverseClient(self, host, port, rhost, rport, **args):
+        def psHandler(ps_net):
+            def rcHandler(rc_net):
+                _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
+            
+            rc_net = XNet()  # reverse client
+            rc_net.reverseClient(rhost, rport, handler=rcHandler)
+            del rc_net
+        
+        self.positiveServer(host, port, handler=psHandler)
 
     def udpNatTrv(self, key, host, port):
         #addr = self._udp.getsockname()
@@ -594,7 +708,7 @@ class XNet(Net):
                 self.sendto(data, *keyAddr.pop(key))
 
 
-def _ptyPipe_ps2rc(args):
+def _ptyPipe_psrc(args):
     '''positive server <-> reverse client.'''
     ps_host = args['host']  # positive server listen host
     ps_port = args['port']  # positive server listen port
@@ -610,6 +724,7 @@ def _ptyPipe_ps2rc(args):
     
     ps_net = XNet()  # positive server
     ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
+    del ps_net
 
 def _ptyPipe_ps(args):
     '''positive server.'''
@@ -623,6 +738,7 @@ def _ptyPipe_ps(args):
 
     ps_net = XNet()
     ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
+    del ps_net
 
 def _ptyPipe_pc(args):
     '''positive client.'''
@@ -631,6 +747,7 @@ def _ptyPipe_pc(args):
 
     pc_net = XNet()
     pc_net.positiveClient(ps_host, ps_port)
+    del pc_net
 
 def _ptyPipe_rs(args):
     '''reverse server.'''
@@ -644,6 +761,7 @@ def _ptyPipe_rs(args):
 
     rs_net = XNet()
     rs_net.reverseServer(rs_host, rs_port, handler=rsHandler)
+    del rs_net
 
 def _ptyPipe_rc(args):
     '''reverse client.'''
@@ -652,6 +770,7 @@ def _ptyPipe_rc(args):
 
     rc_net = XNet()
     rc_net.reverseClient(rs_host, rs_port)
+    del rc_net
 
 def ptyPipe(env, who, **args):
     '''who:
@@ -673,7 +792,7 @@ def ptyPipe(env, who, **args):
         if who == 's':
             _ptyPipe_pc(args)
         elif who == 'M':
-            _ptyPipe_ps2rc(args)
+            _ptyPipe_psrc(args)
         elif who == 't':
             _ptyPipe_rs(args)
     elif env == 'sMt':
@@ -810,7 +929,7 @@ try:
         def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
             self.manager = multiprocessing.Manager()
             self.msgq = self.manager.Queue()
-            self.reqs = self.manager.{}
+            self.reqs = self.manager.dist()
             SocketServer.ForkingTCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
 
         def serve_forever(self, poll_interval=0.5):
@@ -957,52 +1076,98 @@ class SldeBuf:
 
 
 if __name__ == '__main__':
-    from optparse import OptionParser
+    import optparse
 
-    op = OptionParser()
-    op.set_usage('''%prog <ENV> <WHO> [options]\n  ENV\tEnvironment: tsM/sMt/tS/sT\n  WHO\tWho: s/S/t/T/M''')
-
-    #op.add_option('-e', '--env', action='store', dest='env', type=str, help="Environment, must be set. (tsM/tS)")
-    #op.add_option('-w', '--who', action='store', dest='who', type=str, help="Who, must be set. (s/t/M/S)")
+    op = optparse.OptionParser()
+    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/port)')
+    #op = optparse.OptionGroup(op, 'pty pipe')
+    #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
+    #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
+    op.add_option('-t', '--type', action='store', dest='type', type=str, help='type, positive or reverse, client or server, must be set (pc/ps/rc/rs/psrc)')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
-    op.add_option('-l', '--local', action='store', dest='laddr', type=str, help="Address of local host, like 0.0.0.0:1234")
-    op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help="Address of remote host, like 192.168.1.101:1234")
-    op.add_option('-c', '--command', action='store', dest='cmd', type=str, help="Command to be run, when connect")
+    op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
+    op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
+    op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
+    op.add_option('-p', '--address-pairs', action='store', dest='addr_pairs', type=str, help='forward port address pairs, like 0.0.0.0:10022,localhost:22;localhost:80,localhost:80')
+
+    #op.add_option_group(opg)
 
     (opts, args) = op.parse_args()
-
-    if len(sys.argv) < 4 or (not opts.laddr and not opts.raddr) or sys.argv[1] not in ('tsM', 'tS') or sys.argv[2] not in ('t', 's', 'M', 'S'):
+    if len(sys.argv) < 2:
         op.print_help()
         sys.exit(1)
+    
+    function = sys.argv[1]
+    cmd = opts.cmd
+    daemon = opts.daemon
+    cstype = opts.type
 
-    try:
-        env = sys.argv[1]
-        who = sys.argv[2]
+    if opts.laddr:
+        host, port = opts.laddr.split(':')
+        port = int(port)
+    else:
+        host, port = None, None
 
-        if opts.laddr:
-            host, port = opts.laddr.split(':')
-            port = int(port)
-        else:
-            host, port = None, None
+    if opts.raddr:
+        rhost, rport = opts.raddr.split(':')
+        rport = int(rport)
+    else:
+        rhost, rport = None, None
 
-        if opts.raddr:
-            rhost, rport = opts.raddr.split(':')
-            rport = int(rport)
-        else:
-            rhost, rport = None, None
-
-        cmd = opts.cmd
-        daemon = opts.daemon
-
-    except:
-        op.print_help()
-        sys.exit(1)
-
+    if opts.addr_pairs:
+        addr_pairs = []
+        for pair in opts.addr_pairs.split(';'):
+            laddr, raddr = pair.split(',')
+            _host, _port = laddr.split(':')
+            _port = int(_port)
+            _rhost, _rport = raddr.split(':')
+            _rport = int(_rport)
+            addr_pairs.append(((_host, _port), (_rhost, _rport)))
+    else:
+        addr_pairs = None
+    
     if daemon:
         daemonize()
 
     if 'HOME' in os.environ:
         os.chdir(os.environ['HOME'])
 
-    ptyPipe(env, who, host=host, port=port, rhost=rhost, rport=rport, cmd=cmd)
+    try:
+        if function == 'pty':
+            assert(cstype)
+            assert(not ((cstype == 'ps' or cstype == 'rs') and not cmd))
+            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
+            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
 
+            if cstype == 'pc':
+                _net.positiveClient(rhost, rport)
+            elif cstype == 'ps':
+                _net.positiveServer(host, port, cmd=cmd)
+            elif cstype == 'rc':
+                _net.reverseClient(host, port)
+            elif cstype == 'rs':
+                _net.reverseServer(rhost, rport, cmd=cmd)
+            elif cstype == 'psrc':
+                _net.positiveServerThenReverseClient(host, port, rhost, rport)
+
+        elif function == 'port':
+            assert(cstype)
+            assert(not ((cstype == 'pc' or cstype == 'rc') and not addr_pairs))
+            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
+            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
+
+            if cstype == 'pc':
+                _net.positiveClient(rhost, rport, handler=_lmapping, addr_pairs=addr_pairs)
+            elif cstype == 'ps':
+                _net.positiveServer(host, port, handler=_rmapping)
+            elif cstype == 'rc':
+                _net.reverseClient(host, port, handler=_lmapping, addr_pairs=addr_pairs)
+            elif cstype == 'rs':
+                _net.reverseServer(rhost, rport, handler=_rmapping)
+            elif cstype == 'psrc':
+                _net.positiveServerThenReverseClient(host, port, rhost, rport)
+
+    except AssertionError:
+        traceback.print_exc()
+        op.print_help()
+        sys.exit(1)
