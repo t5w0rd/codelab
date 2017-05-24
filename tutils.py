@@ -200,10 +200,10 @@ class Net:
         tcpRawStdIO(self._tcp, eof_break=eof_break)
 
     def rmap(self):
-        tcpMappingAgent(self._tcp)
+        tcpMapAgent(self._tcp)
 
     def lmap(self, mapping):
-        tcpMappingProxy(self._tcp, mapping)
+        tcpMapProxy(self._tcp, mapping)
 
 def _write(fd, data):
     """Write all the data to a descriptor."""
@@ -348,12 +348,12 @@ def _unpackData(buf, pos):
 def _packClose(sid):
     return struct.pack('!IB', sid, CMD_CLOSE)
 
-def tcpMappingProxy(tcp, mapping):
+def tcpMapProxy(tcp, mapping):
     '''mapping: [((lhost, lport), (rhost, rport)), ...]'''
     _log.info('tcp port proxy start')
     return _tcpForwardPort(tcp, True, mapping)
 
-def tcpMappingAgent(tcp):
+def tcpMapAgent(tcp):
     _log.info('tcp port agent start')
     return _tcpForwardPort(tcp, False, None)
 
@@ -1087,7 +1087,7 @@ if __name__ == '__main__':
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
-    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='address mapping pairs, like 0.0.0.0:10022,localhost:22;localhost:80,localhost:80')
+    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
 
     #op.add_option_group(opg)
@@ -1116,7 +1116,7 @@ if __name__ == '__main__':
 
     if opts.mapping:
         mapping = []
-        for pair in opts.mapping.split(';'):
+        for pair in opts.mapping.split(',,'):
             laddr, raddr = pair.split(',')
             _host, _port = laddr.split(':')
             _port = int(_port)
