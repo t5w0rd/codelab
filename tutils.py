@@ -902,19 +902,20 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         if pid > 0:
             # exit from second parent
             sys.exit(0)
+
+        # redirect standard file descriptors
+        sys.stdout.flush()
+        sys.stderr.flush()
+        si = file(stdin, 'r')
+        so = file(stdout, 'a+')
+        se = file(stderr, 'a+', 0)
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
         sys.exit(1)
 
-    # redirect standard file descriptors
-    sys.stdout.flush()
-    sys.stderr.flush()
-    si = file(stdin, 'r')
-    so = file(stdout, 'a+')
-    se = file(stderr, 'a+', 0)
-    os.dup2(si.fileno(), sys.stdin.fileno())
-    os.dup2(so.fileno(), sys.stdout.fileno())
-    os.dup2(se.fileno(), sys.stderr.fileno())
             
 def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=False):
     """
@@ -956,23 +957,22 @@ def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         if pid > 0:
             # exit from second parent
             os._exit(0)
-        else:
-            os.execve(me, (me,), env)
-            os._exit(0)
+
+        # redirect standard file descriptors
+        sys.stdout.flush()
+        sys.stderr.flush()
+        si = file(stdin, 'r')
+        so = file(stdout, 'a+')
+        se = file(stderr, 'a+', 0)
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+        os.execve(me, (me,), env)
+        os._exit(0)
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
         os._exit(1)
 
-    # redirect standard file descriptors
-    sys.stdout.flush()
-    sys.stderr.flush()
-    si = file(stdin, 'r')
-    so = file(stdout, 'a+')
-    se = file(stderr, 'a+', 0)
-    os.dup2(si.fileno(), sys.stdin.fileno())
-    os.dup2(so.fileno(), sys.stdout.fileno())
-    os.dup2(se.fileno(), sys.stderr.fileno())
-    
 def checkHideArgvs():
     if 'tmpfile' not in os.environ:
         return
