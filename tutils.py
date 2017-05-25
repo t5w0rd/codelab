@@ -563,21 +563,29 @@ class XNet(Net):
 
     def positiveServer(self, host, port, handler=_rpty, loop=True, **args):
         '''socket <-> pty'''
-        while loop:
+        while True:
             self.listen(host, port)
             handler(self, **args)
             self.close()
 
-    def positiveClient(self, host, port, handler=_lpty, loop=False, **args):
+            if not loop:
+                break
+
+    def positiveClient(self, host, port, handler=_lpty, loop=False, interval=1, **args):
         '''stdio <-> socket'''
-        while loop:
+        while True:
             self.connect(host, port)
             handler(self, **args)
             self.close()
+            
+            if not loop:
+                break
 
-    def reverseServer(self, host, port, interval=1, handler=_rpty, loop=True, **args):
+            time.sleep(interval)
+
+    def reverseServer(self, host, port, handler=_rpty, loop=True, interval=1, **args):
         '''socket <-> pty'''
-        while loop:
+        while True:
             try:
                 self.connect(host, port)
                 handler(self, **args)
@@ -586,14 +594,20 @@ class XNet(Net):
                 #print e
                 pass
 
+            if not loop:
+                break
+
             time.sleep(interval)
 
     def reverseClient(self, host, port, handler=_lpty, loop=False, **args):
         '''stdio <-> socket'''
-        while loop:
+        while True:
             self.listen(host, port)
             handler(self, **args)
             self.close()
+
+            if not loop:
+                break
 
     def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
         def psHandler(ps_net):
