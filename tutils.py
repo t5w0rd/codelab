@@ -1216,10 +1216,29 @@ def sshExecWorker(args):
 if __name__ == '__main__':
     checkHideArgvs()
 
+    if len(sys.argv) >= 2 and sys.argv[1] not in ('pty', 'map', 'sshexec'):
+        if sys.argv[1] == 'genargvs' and len(sys.argv) > 3:
+            # generate argvs file
+            with file(sys.argv[2], 'wb') as fp:
+                pickle.dump(sys.argv[3:], fp)
+            sys.exit(0)
+        elif os.path.exists(sys.argv[1]):
+            # load argvs file
+            argvs_file = sys.argv[1]
+            keep = len(sys.argv) == 3 and sys.argv[2] == 'keep'
+            with file(argvs_file, 'rb') as fp:
+                sys_argv = pickle.load(fp)
+                sys_argv.insert(0, sys.argv[0])
+                sys.argv = sys_argv
+
+            if not keep:
+                os.remove(argvs_file)
+
+
     import optparse
 
     op = optparse.OptionParser()
-    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map/sshexec)')
+    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map/sshexec/genargvs)')
     #op = optparse.OptionGroup(op, 'pty pipe')
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
@@ -1233,7 +1252,7 @@ if __name__ == '__main__':
     op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
-    op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote addres, like "111.2.3.4:22,222.3.4.5:22"')
+    op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote address, like "111.2.3.4:22,222.3.4.5:22"')
 
     #op.add_option_group(opg)
 
