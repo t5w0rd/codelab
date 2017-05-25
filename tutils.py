@@ -20,7 +20,6 @@ import ctypes
 import struct
 
 import traceback
-import paramiko
 
 
 __all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
@@ -317,6 +316,7 @@ def tcpRawStdIO(tcp, eof_break=True):
 
 
 # ADDR_MAPPING = sid:uint32@ + cmd:uint8 + data:DATA(cmd)
+# CMD_ALIVE:uint8 = 0
 # CMD_CONNECT:uint8 = 1
 # CMD_DATA:uint8 = 2
 # CMD_CLOSE:uint8 = 3
@@ -324,9 +324,14 @@ def tcpRawStdIO(tcp, eof_break=True):
 # DATA(CMD_DATA) = length:uint16@ + data:string(length)
 # DATA() = none:string(0)
 
+CMD_ALIVE = 0
 CMD_CONNECT = 1
 CMD_DATA = 2
 CMD_CLOSE = 3
+ALIVE_INTERVAL = 30
+
+def _packAlive():
+    return struct.pack('!IB', 0, CMD_ALIVE)
 
 def _packConnect(sid, addr):
     host, port = addr
@@ -358,7 +363,7 @@ def tcpMapAgent(tcp):
     _log.info('tcp port agent start')
     return _tcpForwardPort(tcp, False, None)
 
-def _tcpForwardPort(tcp, isproxy, mapping):
+def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
     rfds = [tcp,]
     lstnMap = {}
     conn2sidMap = {}
@@ -366,6 +371,16 @@ def _tcpForwardPort(tcp, isproxy, mapping):
     sndBuf = SldeBuf()
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
+
+    def clearAndexit():
+        tcp.close()
+        if isproxy:
+            for lstn in lstnMap.iterkeys():
+                lstn.close()
+
+        for conn in conn2sidMap.iterkeys():
+            conn.close()
+        _log.info('%s|exit', who)
 
     if isproxy:
         assert(mapping)
@@ -384,17 +399,19 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                 rfds.append(lstn)
                 lstn.listen(5)
             except Exception, msg:
-                _log.info('%s|listen failed: %s', who, msg)
+                _log.error('%s|listen failed: %s', who, msg)
                 lstn.close()
-                for lstn in lstnMap.iterkeys():
-                    lstn.close()
-                _log.info('%s|exit', who)
+                clearAndexit()
                 return
     else:
         who = 'agent'
 
+    now = time.time()
+    tmAlive = now  # the time of last recv CMD_ALIVE
+    tmSndAlive = now  # the time of last send CMD_ALIVE
     while True:
         rlist, _, _ = select.select(rfds, [], [], 1)
+        now = time.time()
         for rfd in rlist:
             if rfd == tcp:
                 # from remote agent, proto buf
@@ -402,15 +419,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                 if not s:
                     # remote connection is closed, clear
                     _log.info('%s|remote peer closed', who)
-                    tcp.close()
-                    if isproxy:
-                        for lstn in lstnMap.iterkeys():
-                            lstn.close()
-
-                    for conn in conn2sidMap.iterkeys():
-                        conn.close()
-
-                    _log.info('%s|exit', who)
+                    clearAndexit()
                     return
 
                 left = rcvBuf.write(s)
@@ -433,7 +442,10 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                     sid, cmd = struct.unpack_from('!IB', buf, pos)
                     pos += struct.calcsize('!IB')
 
-                    if cmd == CMD_CONNECT:
+                    if cmd == CMD_ALIVE:
+                        tmAlive = now
+                        _log.info('%s|remote peer is alive', who)
+                    elif cmd == CMD_CONNECT:
                         # cmd connect
                         assert(not isproxy)
                         assert(sid not in sid2connMap)
@@ -517,6 +529,21 @@ def _tcpForwardPort(tcp, isproxy, mapping):
 
             else:
                 raise Exception('unknown socket')
+            
+        # timeout
+        tmSndAliveDelta = now - tmSndAlive
+        if tmSndAliveDelta >= ALIVE_INTERVAL:
+            # tell peer
+            sndBuf.clear()
+            buf = sndBuf.encode(_packAlive())
+            tcp.sendall(buf)
+            tmSndAlive = now
+
+        tmAliveDelta = now - tmAlive
+        if tmAliveDelta > ALIVE_INTERVAL * 2:
+            _log.error('%s|remote is not alive')
+            clearAndexit()
+            return
 
 class XNet(Net):
     def __init__(self):
@@ -1118,6 +1145,10 @@ class SldeBuf:
             struct.pack_into('!BH%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
             return encodebuf
 
+try:
+    import paramiko
+except:
+    pass
 
 def sshExecWorker(args):
     host, port, user, passwd, cmd = args
