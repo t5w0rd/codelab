@@ -372,7 +372,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
 
-    tcp.setblocking(False)
+    tcp.settimeout(5)
     def clearAndexit():
         tcp.close()
         if isproxy:
@@ -390,7 +390,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
         sidgen = 1
         for laddr, raddr in mapping:
             lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
-            lstn.setblocking(False)
+            lstn.settimeout(5)
             lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, 'SO_REUSEPORT'):
                 lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -461,7 +461,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                         conn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
                         try:
                             conn.connect(raddr)
-                            conn.setblocking(False)
+                            conn.settimeout(5)
                             # append conn info
                             rfds.append(conn)
                             conn2sidMap[conn] = sid
@@ -521,7 +521,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                 # new connection
                 assert(isproxy)
                 conn, addr = rfd.accept()
-                conn.setblocking(False)
+                conn.settimeout(5)
                 sid = sidgen
                 sidgen += 1
                 
