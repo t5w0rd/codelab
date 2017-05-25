@@ -20,6 +20,7 @@ import ctypes
 import struct
 
 import traceback
+import paramiko
 
 
 __all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
@@ -1117,10 +1118,6 @@ class SldeBuf:
             struct.pack_into('!BH%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
             return encodebuf
 
-try:
-    import paramiko
-except:
-    pass
 
 def sshExecWorker(args):
     host, port, user, passwd, cmd = args
