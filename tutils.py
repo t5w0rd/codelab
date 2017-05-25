@@ -18,6 +18,8 @@ import re
 import select
 import ctypes
 import struct
+import tempfile
+import pickle
 
 import traceback
 
@@ -863,7 +865,7 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     Programming in the UNIX Environment" for details (ISBN 0201563177)
     http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
     """
-    try: 
+    try:
         pid = os.fork()
         if pid > 0:
             # exit first parent
@@ -879,7 +881,7 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.umask(0)
 
     # do second fork
-    try: 
+    try:
         pid = os.fork()
         if pid > 0:
             # exit from second parent
@@ -898,13 +900,15 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
             
-def hideCommandLine(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=False):
+def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=False):
     """
     do the UNIX double-fork magic, see Stevens' "Advanced 
     Programming in the UNIX Environment" for details (ISBN 0201563177)
     http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
     """
-    try: 
+
+    me = os.path.abspath(sys.argv[0])
+    try:
         pid = os.fork()
         if pid > 0:
             # exit first parent
@@ -921,12 +925,23 @@ def hideCommandLine(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', k
 
     # do second fork
     try: 
+        env = dict(os.environ)
+        fd, env['tmpfile'] = tempfile.mkstemp()
+        sys_argv = list(sys.argv)
+        if '-H' in sys_argv:
+            sys_argv.remove('-H')
+        if '-hide' in sys_argv:
+            sys_argv.remove('--hide')
+        sys_argv = pickle.dumps(sys_argv)
+        os.write(fd, sys_argv)
+        os.close(fd)
+
         pid = os.fork()
         if pid > 0:
             # exit from second parent
-            #!!!!!!!!!!!!
-
             sys.exit(0)
+        else:
+            os.execve(me, (me,), env)
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
         sys.exit(1)
@@ -941,6 +956,18 @@ def hideCommandLine(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', k
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
     
+def checkHideArgvs():
+    if 'tmpfile' not in os.environ:
+        return
+
+    tmpfile = os.environ['tmpfile']
+    fp = file(tmpfile, 'rb')
+    sys_argv = pickle.load(fp)
+    fp.close()
+    os.remove(tmpfile)
+    print sys_argv
+    sys.argv = sys_argv
+
 def multijobs(target, args, workers=None):
     if not workers:
         workers = multiprocessing.cpu_count()
@@ -1171,6 +1198,8 @@ def sshExecWorker(args):
     return ret
 
 if __name__ == '__main__':
+    checkHideArgvs()
+
     import optparse
 
     op = optparse.OptionParser()
@@ -1184,6 +1213,7 @@ if __name__ == '__main__':
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
     op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
+    op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
     op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote addres, like "111.2.3.4:22,222.3.4.5:22"')
@@ -1191,13 +1221,14 @@ if __name__ == '__main__':
     #op.add_option_group(opg)
 
     (opts, args) = op.parse_args()
-    if len(sys.argv) < 2:
+    if len(args) < 1:
         op.print_help()
         sys.exit(1)
     
     function = args[0]
     cmd = opts.cmd
     daemon = opts.daemon
+    hide_argvs = opts.hide_argvs
     passwd = opts.passwd
     user = opts.user
     cstype = opts.type
@@ -1237,6 +1268,9 @@ if __name__ == '__main__':
     
     if daemon:
         daemonize()
+
+    if hide_argvs:
+        hideArgvs()
 
     if 'HOME' in os.environ:
         os.chdir(os.environ['HOME'])
