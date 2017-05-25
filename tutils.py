@@ -561,22 +561,23 @@ class XNet(Net):
     def __init__(self):
         Net.__init__(self)
 
-    def positiveServer(self, host, port, handler=_rpty, **args):
+    def positiveServer(self, host, port, handler=_rpty, loop=True, **args):
         '''socket <-> pty'''
-        while True:
+        while loop:
             self.listen(host, port)
             handler(self, **args)
             self.close()
 
-    def positiveClient(self, host, port, handler=_lpty, **args):
+    def positiveClient(self, host, port, handler=_lpty, loop=False, **args):
         '''stdio <-> socket'''
-        self.connect(host, port)
-        handler(self, **args)
-        self.close()
+        while loop:
+            self.connect(host, port)
+            handler(self, **args)
+            self.close()
 
-    def reverseServer(self, host, port, interval=1, handler=_rpty, **args):
+    def reverseServer(self, host, port, interval=1, handler=_rpty, loop=True, **args):
         '''socket <-> pty'''
-        while True:
+        while loop:
             try:
                 self.connect(host, port)
                 handler(self, **args)
@@ -587,22 +588,23 @@ class XNet(Net):
 
             time.sleep(interval)
 
-    def reverseClient(self, host, port, handler=_lpty, **args):
+    def reverseClient(self, host, port, handler=_lpty, loop=False, **args):
         '''stdio <-> socket'''
-        self.listen(host, port)
-        handler(self, **args)
-        self.close()
+        while loop:
+            self.listen(host, port)
+            handler(self, **args)
+            self.close()
 
-    def positiveServerThenReverseClient(self, host, port, rhost, rport, **args):
+    def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
         def psHandler(ps_net):
             def rcHandler(rc_net):
                 _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
             
             rc_net = XNet()  # reverse client
-            rc_net.reverseClient(rhost, rport, handler=rcHandler)
+            rc_net.reverseClient(rhost, rport, handler=rcHandler, loop=loop)
             del rc_net
         
-        self.positiveServer(host, port, handler=psHandler)
+        self.positiveServer(host, port, handler=psHandler, loop=loop)
 
     def udpNatTrv(self, key, host, port):
         #addr = self._udp.getsockname()
@@ -912,10 +914,10 @@ def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         pid = os.fork()
         if pid > 0:
             # exit first parent
-            sys.exit(0)
+            os._exit(0)
     except OSError, e: 
         sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
-        sys.exit(1)
+        os._exit(1)
 
     # decouple from parent environment
     if not keepwd:
@@ -939,13 +941,13 @@ def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         pid = os.fork()
         if pid > 0:
             # exit from second parent
-            sys.exit(0)
+            os._exit(0)
         else:
             os.execve(me, (me,), env)
-            sys.exit(0)
+            os._exit(0)
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
-        sys.exit(1)
+        os._exit(1)
 
     # redirect standard file descriptors
     sys.stdout.flush()
@@ -966,7 +968,6 @@ def checkHideArgvs():
     sys_argv = pickle.load(fp)
     fp.close()
     os.remove(tmpfile)
-    print sys_argv
     sys.argv = sys_argv
 
 def multijobs(target, args, workers=None):
@@ -1215,6 +1216,7 @@ if __name__ == '__main__':
     op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
     op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
+    op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
     op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote addres, like "111.2.3.4:22,222.3.4.5:22"')
@@ -1230,6 +1232,7 @@ if __name__ == '__main__':
     cmd = opts.cmd
     daemon = opts.daemon
     hide_argvs = opts.hide_argvs
+    loop = opts.loop
     passwd = opts.passwd
     user = opts.user
     cstype = opts.type
@@ -1273,6 +1276,7 @@ if __name__ == '__main__':
     elif daemon:
         daemonize()
 
+
     if 'HOME' in os.environ:
         os.chdir(os.environ['HOME'])
 
@@ -1284,15 +1288,15 @@ if __name__ == '__main__':
             assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
-                _net.positiveClient(rhost, rport)
+                _net.positiveClient(rhost, rport, loop=loop)
             elif cstype == 'ps':
-                _net.positiveServer(host, port, cmd=cmd)
+                _net.positiveServer(host, port, loop=loop, cmd=cmd)
             elif cstype == 'rc':
-                _net.reverseClient(host, port)
+                _net.reverseClient(host, port, loop=loop)
             elif cstype == 'rs':
-                _net.reverseServer(rhost, rport, cmd=cmd)
+                _net.reverseServer(rhost, rport, loop=loop, cmd=cmd)
             elif cstype == 'psrc':
-                _net.positiveServerThenReverseClient(host, port, rhost, rport)
+                _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
 
         elif function == 'map':
             assert(cstype)
@@ -1301,15 +1305,15 @@ if __name__ == '__main__':
             assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
-                _net.positiveClient(rhost, rport, handler=_lmap, mapping=mapping)
+                _net.positiveClient(rhost, rport, handler=_lmap, loop=loop, mapping=mapping)
             elif cstype == 'ps':
-                _net.positiveServer(host, port, handler=_rmap)
+                _net.positiveServer(host, port, handler=_rmap, loop=loop)
             elif cstype == 'rc':
-                _net.reverseClient(host, port, handler=_lmap, mapping=mapping)
+                _net.reverseClient(host, port, handler=_lmap, loop=loop, mapping=mapping)
             elif cstype == 'rs':
-                _net.reverseServer(rhost, rport, handler=_rmap)
+                _net.reverseServer(rhost, rport, handler=_rmap, loop=loop)
             elif cstype == 'psrc':
-                _net.positiveServerThenReverseClient(host, port, rhost, rport)
+                _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
         elif function == 'sshexec':
             assert(paramiko)
             assert(raddrs)
