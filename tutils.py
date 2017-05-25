@@ -859,6 +859,49 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
     os.dup2(si.fileno(), sys.stdin.fileno())
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
+            
+def hideCommandLine(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=False):
+    """
+    do the UNIX double-fork magic, see Stevens' "Advanced 
+    Programming in the UNIX Environment" for details (ISBN 0201563177)
+    http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
+    """
+    try: 
+        pid = os.fork()
+        if pid > 0:
+            # exit first parent
+            sys.exit(0)
+    except OSError, e: 
+        sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+    # decouple from parent environment
+    if not keepwd:
+        os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # do second fork
+    try: 
+        pid = os.fork()
+        if pid > 0:
+            # exit from second parent
+            #!!!!!!!!!!!!
+
+            sys.exit(0)
+    except OSError, e: 
+        sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+    # redirect standard file descriptors
+    sys.stdout.flush()
+    sys.stderr.flush()
+    si = file(stdin, 'r')
+    so = file(stdout, 'a+')
+    se = file(stderr, 'a+', 0)
+    os.dup2(si.fileno(), sys.stdin.fileno())
+    os.dup2(so.fileno(), sys.stdout.fileno())
+    os.dup2(se.fileno(), sys.stderr.fileno())
     
 def multijobs(target, args, workers=None):
     if not workers:
@@ -1074,12 +1117,26 @@ class SldeBuf:
             struct.pack_into('!BH%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
             return encodebuf
 
+try:
+    import paramiko
+except:
+    pass
+
+def sshExecWorker(args):
+    host, port, user, passwd, cmd = args
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(host, port=port, username=user, password=passwd)
+    stdin, stdout, stderr = ssh.exec_command(cmd)
+    ret = stdout.read(), stderr.read()
+    ssh.close()
+    return ret
 
 if __name__ == '__main__':
     import optparse
 
     op = optparse.OptionParser()
-    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map)')
+    op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map/sshexec)')
     #op = optparse.OptionGroup(op, 'pty pipe')
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
@@ -1087,8 +1144,11 @@ if __name__ == '__main__':
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
-    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
+    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
+    op.add_option('-u', '--user', action='store', dest='user', help='Username')
+    op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
+    op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote addres, like "111.2.3.4:22,222.3.4.5:22"')
 
     #op.add_option_group(opg)
 
@@ -1097,9 +1157,11 @@ if __name__ == '__main__':
         op.print_help()
         sys.exit(1)
     
-    function = sys.argv[1]
+    function = args[0]
     cmd = opts.cmd
     daemon = opts.daemon
+    passwd = opts.passwd
+    user = opts.user
     cstype = opts.type
 
     if opts.laddr:
@@ -1125,6 +1187,15 @@ if __name__ == '__main__':
             mapping.append(((_host, _port), (_rhost, _rport)))
     else:
         mapping = None
+
+    if opts.raddrs:
+        raddrs = []
+        for raddr in opts.raddrs.split(','):
+            _host, _port = raddr.split(':')
+            _port = int(_port)
+            raddrs.append((_host, _port))
+    else:
+        raddrs = None
     
     if daemon:
         daemonize()
@@ -1166,6 +1237,19 @@ if __name__ == '__main__':
                 _net.reverseServer(rhost, rport, handler=_rmap)
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport)
+        elif function == 'sshexec':
+            assert(paramiko)
+            assert(raddrs)
+            assert(user and passwd)
+            args = []
+            for host, port in raddrs:
+                args.append((host, port, user, passwd, cmd))
+            res = multijobs(sshExecWorker, args, workers=len(args))
+            for out, err in res:
+                sys.stdout.write(out)
+                if err:
+                    sys.stdout.write(err)
+            sys.stdout.flush()
         else:
             assert(not 'unsupported FUNCTION')
 
