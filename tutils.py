@@ -942,6 +942,7 @@ def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
             sys.exit(0)
         else:
             os.execve(me, (me,), env)
+            sys.exit(0)
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
         sys.exit(1)
@@ -1266,11 +1267,11 @@ if __name__ == '__main__':
     else:
         raddrs = None
     
-    if daemon:
-        daemonize()
-
     if hide_argvs:
+        # hide runtime command line argvs and daemonize
         hideArgvs()
+    elif daemon:
+        daemonize()
 
     if 'HOME' in os.environ:
         os.chdir(os.environ['HOME'])
