@@ -363,7 +363,7 @@ def tcpMapAgent(tcp):
     _log.info('tcp port agent start')
     return _tcpForwardPort(tcp, False, None)
 
-def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
+def _tcpForwardPort(tcp, isproxy, mapping):
     rfds = [tcp,]
     lstnMap = {}
     conn2sidMap = {}
@@ -372,6 +372,7 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
 
+    tcp.setblocking(False)
     def clearAndexit():
         tcp.close()
         if isproxy:
@@ -380,6 +381,7 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
 
         for conn in conn2sidMap.iterkeys():
             conn.close()
+        tcp.setblocking(True)
         _log.info('%s|exit', who)
 
     if isproxy:
@@ -389,6 +391,7 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
         sidgen = 1
         for laddr, raddr in mapping:
             lstn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+            lstn.setblocking(False)
             lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, 'SO_REUSEPORT'):
                 lstn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -415,7 +418,10 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
         for rfd in rlist:
             if rfd == tcp:
                 # from remote agent, proto buf
-                s = tcp.recv(toRecv)
+                try:
+                    s = tcp.recv(toRecv)
+                except socket.error:
+                    s = None
                 if not s:
                     # remote connection is closed, clear
                     _log.info('%s|remote peer closed', who)
@@ -456,6 +462,7 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
                         conn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
                         try:
                             conn.connect(raddr)
+                            setblocking(False)
                             # append conn info
                             rfds.append(conn)
                             conn2sidMap[conn] = sid
@@ -488,7 +495,10 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
             elif rfd in conn2sidMap:
                 # connection socket can be read
                 sid = conn2sidMap[rfd]
-                s = rfd.recv(0xffff)
+                try:
+                    s = rfd.recv(0xffff)
+                except socket.error:
+                    s = None
                 if not s:
                     # connection is closed
                     _log.info('%s|sid->%u|connection closed, tell remote peer to close connection', who, sid)
@@ -512,6 +522,7 @@ def _tcpForwardPort(tcp, isproxy, mapping, timeout=5):
                 # new connection
                 assert(isproxy)
                 conn, addr = rfd.accept()
+                conn.setblocking(False)
                 sid = sidgen
                 sidgen += 1
                 
