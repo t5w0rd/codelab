@@ -381,7 +381,6 @@ def _tcpForwardPort(tcp, isproxy, mapping):
 
         for conn in conn2sidMap.iterkeys():
             conn.close()
-        tcp.setblocking(True)
         _log.info('%s|exit', who)
 
     if isproxy:
@@ -462,7 +461,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                         conn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
                         try:
                             conn.connect(raddr)
-                            setblocking(False)
+                            conn.setblocking(False)
                             # append conn info
                             rfds.append(conn)
                             conn2sidMap[conn] = sid
