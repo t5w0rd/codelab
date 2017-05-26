@@ -20,6 +20,7 @@ import ctypes
 import struct
 import tempfile
 import pickle
+import urlparse
 
 import traceback
 
@@ -331,6 +332,7 @@ CMD_CONNECT = 1
 CMD_DATA = 2
 CMD_CLOSE = 3
 ALIVE_INTERVAL = 30
+HOST_HTTP_PROXY = '{http}'
 
 def _packAlive():
     return struct.pack('!IB', 0, CMD_ALIVE)
@@ -359,13 +361,13 @@ def _packClose(sid):
 def tcpMapProxy(tcp, mapping):
     '''mapping: [((lhost, lport), (rhost, rport)), ...]'''
     _log.info('tcp port proxy start')
-    return _tcpForwardPort(tcp, True, mapping)
+    return _tcpAddressMapping(tcp, True, mapping)
 
 def tcpMapAgent(tcp):
     _log.info('tcp port agent start')
-    return _tcpForwardPort(tcp, False, None)
+    return _tcpAddressMapping(tcp, False, None)
 
-def _tcpForwardPort(tcp, isproxy, mapping):
+def _tcpAddressMapping(tcp, isproxy, mapping):
     rfds = [tcp,]
     lstnMap = {}
     conn2sidMap = {}
@@ -508,6 +510,7 @@ def _tcpForwardPort(tcp, isproxy, mapping):
                     conn2sidMap.pop(rfd)
                     sid2connMap.pop(sid)
                     rfd.close()
+
                     # tell peer
                     sndBuf.clear()
                     buf = sndBuf.encode(_packClose(sid))
@@ -522,23 +525,68 @@ def _tcpForwardPort(tcp, isproxy, mapping):
             elif rfd in lstnMap:
                 # new connection
                 assert(isproxy)
+                rhost, rport = lstnMap[rfd]
                 conn, addr = rfd.accept()
                 conn.settimeout(5)
                 sid = sidgen
                 sidgen += 1
+
+                isHttpProxy = rhost == HOST_HTTP_PROXY
                 
-                _log.info('%s|sid->%u|new connection, tell remote peer to connect %s:%u', who, sid, lstnMap[rfd][0], lstnMap[rfd][1])
+                if isHttpProxy:
+                    # http proxy connection, recv http header, get host name and fix http header
+                    try:
+                        httpHeader = conn.recv(0xffff)
+                        # get host name and fix http header
+                        httpHeaderLines = httpHeader.splitlines(True)
+                        for index, line in enumerate(httpHeaderLines):
+                            if index == 0:
+                                # parse host and port from url
+                                url = line.split()[1]
+                                res = urlparse.urlsplit(url)
+                                rhost = res.hostname or rhost
+                                rport = res.port or 80
+                            if rhost == HOST_HTTP_PROXY and line.find('Host: ') == 0:
+                                # host
+                                raddr = line[len('Host: '):].rstrip()
+                                res = raddr.split(':')
+                                rhost = res[0]
+                                rport = len(res) == 2 and int(res[1]) or 80
+                            elif line.find('Proxy-Connection: ') == 0:
+                                # proxy, fix
+                                httpHeaderLines[index].replace('Proxy-Connection: ', 'Connection: ', 1)
+                        assert(rhost != HOST_HTTP_PROXY and rport != 0)
+                        httpHeader = ''.join(httpHeaderLines)
+                        _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
+                    except socket.error:
+                        _log.error('%s|sid->%u|new http proxy connection, recv http header failed', who, sid)
+                        conn.close()
+                        conn = None
+                    except AssertionError:
+                        _log.error('%s|sid->%u|new http proxy connection, parse host failed', who, sid)
+                        conn.close()
+                        conn = None
+                else:
+                    # normal connection
+                    _log.info('%s|sid->%u|new connection, tell remote peer to connect %s:%u', who, sid, rhost, rport)
 
-                # append conn info
-                rfds.append(conn)
-                conn2sidMap[conn] = sid
-                sid2connMap[sid] = conn
+                if conn:
+                    # append conn info
+                    rfds.append(conn)
+                    conn2sidMap[conn] = sid
+                    sid2connMap[sid] = conn
 
-                # tell peer
-                sndBuf.clear()
-                buf = sndBuf.encode(_packConnect(sid, lstnMap[rfd]))
-                tcp.sendall(buf)
+                    # tell peer
+                    sndBuf.clear()
+                    buf = sndBuf.encode(_packConnect(sid, (rhost, rport)))
+                    tcp.sendall(buf)
 
+                    if isHttpProxy:
+                        # tell peer
+                        sndBuf.clear()
+                        print httpHeader
+                        buf = sndBuf.encode(_packData(sid, httpHeader))
+                        tcp.sendall(buf)
             else:
                 raise Exception('unknown socket')
             
@@ -1246,13 +1294,13 @@ if __name__ == '__main__':
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
-    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:80,localhost:80"')
+    op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:8080,{http}"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
     op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
     op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
-    op.add_option('-a', '--remote-address', action='store', dest='raddrs', type=str, help='Remote address, like "111.2.3.4:22,222.3.4.5:22"')
+    op.add_option('-a', '--address-list', action='store', dest='raddrs', type=str, help='Remote address list, like "111.2.3.4:22,222.3.4.5:22"')
 
     #op.add_option_group(opg)
 
@@ -1288,8 +1336,15 @@ if __name__ == '__main__':
             laddr, raddr = pair.split(',')
             _host, _port = laddr.split(':')
             _port = int(_port)
-            _rhost, _rport = raddr.split(':')
-            _rport = int(_rport)
+            res = raddr.split(':')
+            if len(res) == 2:
+                _rhost, _rport = res
+                _rport = int(_rport)
+            elif len(res) == 1 and res[0] == HOST_HTTP_PROXY:
+                _rhost, = res
+                _rport = 0
+            else:
+                assert(False)
             mapping.append(((_host, _port), (_rhost, _rport)))
     else:
         mapping = None
