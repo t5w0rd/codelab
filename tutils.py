@@ -395,7 +395,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
         for conn in conn2sidMap.iterkeys():
             conn.close()
         _log.info('%s|exit', who)
-
+    '''
     def tcpSend(data):
         if tcpSndPend:
             tcpSndQueue.append(data)
@@ -412,7 +412,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             tcpSndPend = True
             tcpSndQueue.append(data)
             wfds.append(tcp)
-
+    '''
     if isproxy:
         assert(mapping)
         who = 'proxy'
@@ -605,11 +605,12 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 assert(isproxy)
                 rhost, rport = lstnMap[rfd]
                 conn, addr = rfd.accept()
-                conn.settimeout(5)
+                conn.settimeout(2)
                 sid = sidgen
                 sidgen += 1
 
                 isHttpProxy = rhost == HOST_HTTP_PROXY
+                method = None
                 
                 if isHttpProxy:
                     # http proxy connection, recv http header, get host name and fix http header
@@ -617,13 +618,24 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         httpHeader = conn.recv(0xffff)
                         # get host name and fix http header
                         httpHeaderLines = httpHeader.splitlines(True)
+                        httpHeader = ''
                         for index, line in enumerate(httpHeaderLines):
+                            proxyConnection = False
                             if index == 0:
                                 # parse host and port from url
-                                url = line.split()[1]
-                                res = urlparse.urlsplit(url)
-                                rhost = res.hostname or rhost
-                                rport = res.port or 80
+                                res = line.split()
+                                method = res[0]
+                                if method == 'CONNECT':
+                                    raddr = res[1]
+                                    res = raddr.split(':')
+                                    rhost = res[0]
+                                    rport = len(res) >= 2 and int(res[1]) or 443
+                                    #break
+                                else:
+                                    url = res[1]
+                                    res = urlparse.urlsplit(url)
+                                    rhost = res.hostname or rhost
+                                    rport = res.port or 80
                             if rhost == HOST_HTTP_PROXY and line.find('Host: ') == 0:
                                 # host
                                 raddr = line[len('Host: '):].rstrip()
@@ -631,10 +643,12 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                                 rhost = res[0]
                                 rport = len(res) == 2 and int(res[1]) or 80
                             elif line.find('Proxy-Connection: ') == 0:
-                                # proxy, fix
-                                httpHeaderLines[index] = line.replace('Proxy-Connection: ', 'Connection: ', 1)
+                                # Proxy-Connection skip
+                                proxyConnection = True
+                                #httpHeaderLines[index] = line.replace('Proxy-Connection: ', 'Connection: ', 1)
+                            if not proxyConnection:
+                                httpHeader += line
                         assert(rhost != HOST_HTTP_PROXY and rport != 0)
-                        httpHeader = ''.join(httpHeaderLines)
                         _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
                     except socket.error:
                         _log.error('%s|sid->%u|new http proxy connection, recv http header failed', who, sid)
@@ -660,11 +674,16 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     tcp.sendall(buf)
 
                     if isHttpProxy:
-                        # tell peer
-                        sndBuf.clear()
                         print httpHeader
-                        buf = sndBuf.encode(_packData(sid, httpHeader))
-                        tcp.sendall(buf)
+                        if method == 'CONNECT':
+                            # send conn established
+                            data = 'HTTP/1.1 200 Connection Established\r\nProxy-Agent: tutils/1.0\r\n\r\n'
+                            conn.sendall(data)
+                        else:
+                            # tell peer
+                            sndBuf.clear()
+                            buf = sndBuf.encode(_packData(sid, httpHeader))
+                            tcp.sendall(buf)
             else:
                 raise Exception('unknown socket')
             
