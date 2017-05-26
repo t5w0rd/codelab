@@ -442,7 +442,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     data = queue.popleft()
                     wfd.sendall(data)
             else:
-                _log.error('%s|sid->%u|connect(nonblocking) failed: %s, tell remote peer to close connection', who, sid, os.strerror(res))
+                _log.error('%s|sid->%u|connect(nonblocking) failed: %s(%d), tell remote peer to close connection', who, sid, os.strerror(res), res)
                 wfd.close()
                 sid2connMap.pop(sid)
 
