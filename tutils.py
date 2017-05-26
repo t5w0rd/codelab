@@ -376,11 +376,13 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
     conn2sidMap = {}
     sid2connMap = {}
     connPendMap = {}  # sid: (sid, raddr, queue, tmConn)
+    #tcpSndQueue = collections.deque()
+    #tcpSndPend = False
     sndBuf = SldeBuf()
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
 
-    tcp.settimeout(0)
+    tcp.settimeout(2)
     def clearAndExit():
         tcp.close()
         if isproxy:
@@ -393,6 +395,23 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
         for conn in conn2sidMap.iterkeys():
             conn.close()
         _log.info('%s|exit', who)
+
+    def tcpSend(data):
+        if tcpSndPend:
+            tcpSndQueue.append(data)
+            return
+        try:
+            tcp.sendall(data)
+            while len(tcpSndQueue):
+                data = tcpSndQueue[0]
+                tcp.sendall(data)
+                tcpSndQueue.popleft()
+            tcpSndPend = False
+        except socket.error, e:
+            assert(e.errno == errno.EAGAIN)
+            tcpSndPend = True
+            tcpSndQueue.append(data)
+            wfds.append(tcp)
 
     if isproxy:
         assert(mapping)
@@ -426,30 +445,34 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
         rlist, wlist, _ = select.select(rfds, wfds, [], 1)
         now = time.time()
         for wfd in wlist:
-            # remove conn pending info
-            sid, raddr, queue, tmConn = connPendMap.pop(wfd)
-            wfds.remove(wfd)
-            
-            # connect again for check nonblock connect result
-            res = wfd.connect_ex(raddr)
-            if res == 0 or res == errno.EISCONN:
-                # connect succ, append conn info, and send data from queue
-                _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
-                rfds.append(wfd)
-                conn2sidMap[wfd] = sid
+            if wfd in connPendMap:
+                # remove conn pending info
+                sid, raddr, queue, tmConn = connPendMap.pop(wfd)
+                wfds.remove(wfd)
+                
+                # connect again for check nonblock connect result
+                res = wfd.connect_ex(raddr)
+                if res == 0 or res == errno.EISCONN:
+                    # connect succ, append conn info, and send data from queue
+                    conn.settimeout(5)
+                    _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
+                    rfds.append(wfd)
+                    conn2sidMap[wfd] = sid
 
-                while len(queue):
-                    data = queue.popleft()
-                    wfd.sendall(data)
-            else:
-                _log.error('%s|sid->%u|connect(nonblocking) failed: %s(%d), tell remote peer to close connection', who, sid, os.strerror(res), res)
-                wfd.close()
-                sid2connMap.pop(sid)
+                    while len(queue):
+                        data = queue.popleft()
+                        wfd.sendall(data)
+                else:
+                    _log.error('%s|sid->%u|connect(nonblocking) failed: %s(%d), tell remote peer to close connection', who, sid, os.strerror(res), res)
+                    wfd.close()
+                    sid2connMap.pop(sid)
 
-                # tell peer
-                sndBuf.clear()
-                buf = sndBuf.encode(_packClose(sid))
-                tcp.sendall(buf)
+                    # tell peer
+                    sndBuf.clear()
+                    buf = sndBuf.encode(_packClose(sid))
+                    tcp.sendall(buf)
+            elif wfd == tcp or wfd in conn2sidMap:
+                pass
 
         for rfd in rlist:
             if rfd == tcp:
@@ -572,7 +595,10 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
                     sndBuf.clear()
                     buf = sndBuf.encode(_packData(sid, s))
-                    tcp.sendall(buf)
+                    try:
+                        tcp.sendall(buf)
+                    except:
+                        pass
             
             elif rfd in lstnMap:
                 # new connection
