@@ -497,7 +497,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 if left is None:
                     # wrong data
                     _log.error('%s|bad data from remote peer', who)
-                    rcvbuf.clear()
+                    rcvBuf.clear()
 
                 elif left > 0:
                     # n bytes left
@@ -1310,6 +1310,7 @@ class SldeBuf:
 
     def write(self, buf):
         '''write headerSize bytes for first, return next bytes to write.if return None, failed.'''
+        print '@@', self.pos, len(buf)
         if self.pos == None and len(buf) >= self.headerSize:
             stx, length = struct.unpack_from('!BH', buf)
             if stx == STX and length <= 0xffff:
