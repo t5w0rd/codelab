@@ -341,11 +341,13 @@ def _packAlive():
 
 def _packConnect(sid, addr):
     host, port = addr
-    return struct.pack('!IB4sH', sid, CMD_CONNECT, socket.inet_aton(socket.gethostbyname(host)), port)
+    lenHost = len(host)
+    return struct.pack('!IBH%usH' % (lenHost,), sid, CMD_CONNECT, lenHost, host, port)
 
 def _unpackConnect(buf, pos):
-    n, port = struct.unpack_from('!4sH', buf, pos)
-    host = socket.inet_ntoa(n)
+    lenHost, = struct.unpack_from('!H', buf, pos)
+    pos += struct.calcsize('!H')
+    host, port = struct.unpack_from('!%usH' % (lenHost,), buf, pos)
     return host, port
 
 def _packData(sid, data):
@@ -491,6 +493,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 if left is None:
                     # wrong data
                     _log.error('%s|bad data from remote peer', who)
+                    rcvbuf.clear()
 
                 elif left > 0:
                     # n bytes left
