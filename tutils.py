@@ -15,7 +15,6 @@ import json
 import logging
 import multiprocessing
 import re
-import select
 import ctypes
 import struct
 import tempfile
@@ -476,7 +475,12 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             elif wfd == tcp or wfd in conn2sidMap:
                 pass
 
+        closedFds = set()
         for rfd in rlist:
+            if rfd in closedFds:
+                # closed
+                continue
+
             if rfd == tcp:
                 # from remote agent, proto buf
                 try:
@@ -571,6 +575,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                             connPendMap.pop(conn)
                         else:
                             rfds.remove(conn)
+                            closedFds.add(conn)
                             conn2sidMap.pop(conn)
 
             elif rfd in conn2sidMap:
