@@ -21,6 +21,8 @@ import struct
 import tempfile
 import pickle
 import urlparse
+import collections
+import errno
 
 import traceback
 
@@ -369,19 +371,24 @@ def tcpMapAgent(tcp):
 
 def _tcpAddressMapping(tcp, isproxy, mapping):
     rfds = [tcp,]
+    wfds = []
     lstnMap = {}
     conn2sidMap = {}
     sid2connMap = {}
+    connPendMap = {}  # sid: (sid, raddr, queue, tmConn)
     sndBuf = SldeBuf()
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
 
-    tcp.settimeout(5)
-    def clearAndexit():
+    tcp.settimeout(0)
+    def clearAndExit():
         tcp.close()
         if isproxy:
             for lstn in lstnMap.iterkeys():
                 lstn.close()
+
+        for conn in connPendMap.iterkeys():
+            conn.close()
 
         for conn in conn2sidMap.iterkeys():
             conn.close()
@@ -407,7 +414,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             except Exception, msg:
                 _log.error('%s|listen failed: %s', who, msg)
                 lstn.close()
-                clearAndexit()
+                clearAndExit()
                 return
     else:
         who = 'agent'
@@ -416,8 +423,34 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
     tmAlive = now  # the time of last recv CMD_ALIVE
     tmSndAlive = now  # the time of last send CMD_ALIVE
     while True:
-        rlist, _, _ = select.select(rfds, [], [], 1)
+        rlist, wlist, _ = select.select(rfds, wfds, [], 1)
         now = time.time()
+        for wfd in wlist:
+            # remove conn pending info
+            sid, raddr, queue, tmConn = connPendMap.pop(wfd)
+            wfds.remove(wfd)
+            
+            # connect again for check nonblock connect result
+            res = wfd.connect_ex(raddr)
+            if res == errno.EISCONN:
+                # connect succ, append conn info, and send data from queue
+                _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
+                rfds.append(wfd)
+                conn2sidMap[wfd] = sid
+
+                while len(queue):
+                    data = queue.popleft()
+                    wfd.sendall(data)
+            else:
+                _log.error('%s|sid->%u|connect(nonblocking) failed: %s, tell remote peer to close connection', who, sid, os.strerror(res))
+                wfd.close()
+                sid2connMap.pop(sid)
+
+                # tell peer
+                sndBuf.clear()
+                buf = sndBuf.encode(_packClose(sid))
+                tcp.sendall(buf)
+
         for rfd in rlist:
             if rfd == tcp:
                 # from remote agent, proto buf
@@ -428,7 +461,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 if not s:
                     # remote connection is closed, clear
                     _log.info('%s|remote peer closed', who)
-                    clearAndexit()
+                    clearAndExit()
                     return
 
                 left = rcvBuf.write(s)
@@ -464,19 +497,28 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         # create a new connection
                         conn = socket.socket(type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
                         try:
-                            conn.connect(raddr)
-                            conn.settimeout(5)
-                            # append conn info
-                            rfds.append(conn)
-                            conn2sidMap[conn] = sid
+                            conn.settimeout(0)
+                            res = conn.connect_ex(raddr)
+                            assert(res == errno.EINPROGRESS)
+
+                            # nonblocking IO: append conn pending info
+                            wfds.append(conn)
+                            connPendMap[conn] = (sid, raddr, collections.deque(), now)
                             sid2connMap[sid] = conn
+
+                            # blocking IO: append conn info
+                            #rfds.append(conn)
+                            #conn2sidMap[conn] = sid
+                            #sid2connMap[sid] = conn
                         except socket.error, msg:
-                            _log.error('%s|connect failed: %s, tell remote peer to close connection', who, msg)
-                            conn.close()
+                            raise socket.error(msg)
+                            # blocking IO: connect failed
+                            #_log.error('%s|sid->%u|connect failed: %s, tell remote peer to close connection', who, sid, msg)
+                            #conn.close()
                             # tell peer
-                            sndBuf.clear()
-                            buf = sndBuf.encode(_packClose(sid))
-                            tcp.sendall(buf)
+                            #sndBuf.clear()
+                            #buf = sndBuf.encode(_packClose(sid))
+                            #tcp.sendall(buf)
 
                     elif cmd == CMD_DATA and sid in sid2connMap:
                         # cmd send data
@@ -484,16 +526,26 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         conn = sid2connMap[sid]
                         length, data = _unpackData(buf, pos)
                         assert(len(data) == length)
-                        conn.sendall(data)
+                        if conn in connPendMap:
+                            # connect is pending
+                            _, _, queue, _ = connPendMap[conn]
+                            queue.append(data)
+                        else:
+                            conn.sendall(data)
 
                     elif cmd == CMD_CLOSE and sid in sid2connMap:
                         # cmd close, remove conn info
                         _log.info('%s|sid->%u|cmd->close connection', who, sid)
                         conn = sid2connMap[sid]
-                        rfds.remove(conn)
-                        conn2sidMap.pop(conn)
-                        sid2connMap.pop(sid)
                         conn.close()
+                        sid2connMap.pop(sid)
+                        if conn in connPendMap:
+                            # connect is pending
+                            wfds.remove(conn)
+                            connPendMap.pop(conn)
+                        else:
+                            rfds.remove(conn)
+                            conn2sidMap.pop(conn)
 
             elif rfd in conn2sidMap:
                 # connection socket can be read
@@ -554,7 +606,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                                 rport = len(res) == 2 and int(res[1]) or 80
                             elif line.find('Proxy-Connection: ') == 0:
                                 # proxy, fix
-                                httpHeaderLines[index].replace('Proxy-Connection: ', 'Connection: ', 1)
+                                httpHeaderLines[index] = line.replace('Proxy-Connection: ', 'Connection: ', 1)
                         assert(rhost != HOST_HTTP_PROXY and rport != 0)
                         httpHeader = ''.join(httpHeaderLines)
                         _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
@@ -601,8 +653,8 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
 
         tmAliveDelta = now - tmAlive
         if tmAliveDelta > ALIVE_INTERVAL * 2:
-            _log.error('%s|remote is not alive')
-            clearAndexit()
+            _log.error('%s|remote is not alive' % who)
+            clearAndExit()
             return
 
 class XNet(Net):
@@ -622,9 +674,13 @@ class XNet(Net):
     def positiveClient(self, host, port, handler=_lpty, loop=False, interval=1, **args):
         '''stdio <-> socket'''
         while True:
-            self.connect(host, port)
-            handler(self, **args)
-            self.close()
+            try:
+                self.connect(host, port)
+                handler(self, **args)
+                self.close()
+            except socket.error, e:
+                #print e
+                pass
             
             if not loop:
                 break
