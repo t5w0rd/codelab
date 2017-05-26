@@ -454,7 +454,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 res = wfd.connect_ex(raddr)
                 if res == 0 or res == errno.EISCONN:
                     # connect succ, append conn info, and send data from queue
-                    conn.settimeout(5)
+                    wfd.settimeout(2)
                     _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
                     rfds.append(wfd)
                     conn2sidMap[wfd] = sid
