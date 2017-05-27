@@ -414,6 +414,23 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             tcpSndQueue.append(data)
             wfds.append(tcp)
     '''
+    def sendall(sock, data):
+        try:
+            sock.sendall(data)
+            return 0
+        except socket.error, e:
+            if sock is tcp:
+                raise e
+            else:
+                if e.errno == errno.EPIPE:
+                    rfds.remove(sock)
+                    sid = conn2sidMap.pop(sock)
+                    sid2connMap.pop(sid)
+                    sock.close()
+                else:
+                    raise e
+            return e.errno
+
     if isproxy:
         assert(mapping)
         who = 'proxy'
@@ -462,7 +479,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
 
                     while len(queue):
                         data = queue.popleft()
-                        wfd.sendall(data)
+                        res = sendall(wfd, data)
                 else:
                     _log.error('%s|sid->%u|connect(nonblocking) failed: %s(%d), tell remote peer to close connection', who, sid, os.strerror(res), res)
                     wfd.close()
@@ -471,7 +488,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     # tell peer
                     sndBuf.clear()
                     buf = sndBuf.encode(_packClose(sid))
-                    tcp.sendall(buf)
+                    res = sendall(tcp, buf)
             elif wfd == tcp or wfd in conn2sidMap:
                 pass
 
@@ -548,7 +565,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                             # tell peer
                             #sndBuf.clear()
                             #buf = sndBuf.encode(_packClose(sid))
-                            #tcp.sendall(buf)
+                            #res = sendall(tcp, buf)
 
                     elif cmd == CMD_DATA and sid in sid2connMap:
                         # cmd send data
@@ -561,7 +578,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                             _, _, queue, _ = connPendMap[conn]
                             queue.append(data)
                         else:
-                            conn.sendall(data)
+                            res = sendall(conn, data)
 
                     elif cmd == CMD_CLOSE and sid in sid2connMap:
                         # cmd close, remove conn info
@@ -597,14 +614,14 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     # tell peer
                     sndBuf.clear()
                     buf = sndBuf.encode(_packClose(sid))
-                    tcp.sendall(buf)
+                    res = tcp.sendall(buf)
                 else:
                     # tell peer
                     _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
                     sndBuf.clear()
                     buf = sndBuf.encode(_packData(sid, s))
                     try:
-                        tcp.sendall(buf)
+                        res = sendall(tcp, buf)
                     except:
                         pass
             
@@ -679,19 +696,20 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     # tell peer
                     sndBuf.clear()
                     buf = sndBuf.encode(_packConnect(sid, (rhost, rport)))
-                    tcp.sendall(buf)
+                    res = sendall(tcp, buf)
 
                     if isHttpProxy:
                         print httpHeader
                         if method == 'CONNECT':
                             # send conn established
                             data = 'HTTP/1.1 200 Connection Established\r\nProxy-Agent: tutils/1.0\r\n\r\n'
-                            conn.sendall(data)
+                            res = sendall(conn, data)
+
                         else:
                             # tell peer
                             sndBuf.clear()
                             buf = sndBuf.encode(_packData(sid, httpHeader))
-                            tcp.sendall(buf)
+                            res = sendall(tcp, buf)
             else:
                 raise Exception('unknown socket')
             
@@ -701,7 +719,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             # tell peer
             sndBuf.clear()
             buf = sndBuf.encode(_packAlive())
-            tcp.sendall(buf)
+            res = sendall(tcp, buf)
             tmSndAlive = now
 
         tmAliveDelta = now - tmAlive
