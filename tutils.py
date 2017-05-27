@@ -429,6 +429,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     sock.close()
                 elif e.errno is None:
                     # timed out
+                    _log.error('%s|sid->%u|send data timeout', who, sid)
                     pass
                 else:
                     raise e
