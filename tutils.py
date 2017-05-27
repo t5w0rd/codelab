@@ -422,9 +422,10 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             if sock is tcp:
                 raise e
             else:
+                sid = conn2sidMap[sock]
                 if e.errno == errno.EPIPE:
                     rfds.remove(sock)
-                    sid = conn2sidMap.pop(sock)
+                    conn2sidMap.pop(sock)
                     sid2connMap.pop(sid)
                     sock.close()
                 elif e.errno is None:
