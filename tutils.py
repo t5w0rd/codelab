@@ -624,10 +624,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
                     sndBuf.clear()
                     buf = sndBuf.encode(_packData(sid, s))
-                    try:
-                        res = sendall(tcp, buf)
-                    except:
-                        pass
+                    res = sendall(tcp, buf)
             
             elif rfd in lstnMap:
                 # new connection
@@ -679,8 +676,8 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                                 httpHeader += line
                         assert(rhost != HOST_HTTP_PROXY and rport != 0)
                         _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
-                    except socket.error:
-                        _log.error('%s|sid->%u|new http proxy connection, recv http header failed', who, sid)
+                    except socket.error, e:
+                        _log.error('%s|sid->%u|new http proxy connection, recv http header failed: %s', who, sid, e)
                         conn.close()
                         conn = None
                     except AssertionError:
