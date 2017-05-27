@@ -1310,40 +1310,33 @@ class SldeBuf:
 
     def write(self, buf):
         '''write headerSize bytes for first, return next bytes to write.if return None, failed.'''
-        print '@@', self.pos, len(buf)
-        if self.pos == None and len(buf) >= self.headerSize:
-            stx, length = struct.unpack_from('!BH', buf)
-            if stx == STX and length <= 0xffff:
-                self.length = length
-                left = length + 1
-                self.writebuf = ctypes.create_string_buffer(self.headerSize + left)
-                ctypes.memmove(self.writebuf, buf, self.headerSize)
-                self.pos = self.headerSize
-                more = len(buf) - self.headerSize
-                if more > 0:
-                    buf = buf[more:]
-                else:
-                    return left
-            else:
-                return None
-        
-        left = self.length - self.pos - len(buf) + self.headerSize + 1
-        if left < 0:
-            # beyond the length
+        n = len(buf)
+        if self.pos is None:
+            self.writebuf = ctypes.create_string_buffer(self.headerSize + 0xffff + 1)
+            self.pos = 0
+
+        ctypes.memmove(ctypes.addressof(self.writebuf) + self.pos, buf, n)
+        self.pos += n
+
+        if self.pos < self.headerSize:
+            return self.headerSize - self.pos
+
+        stx, length = struct.unpack_from('!BH', self.writebuf, 0)
+        if stx != STX:
             return None
 
-        ctypes.memmove(ctypes.addressof(self.writebuf) + self.pos, buf, len(buf))
-        self.pos += len(buf)
+        self.length = length
+        left = self.headerSize - self.pos + length + 1
         if left > 0:
             return left
-
-        # write finished.
+        
+        # write finished
         magic, = struct.unpack_from('B', self.writebuf, self.headerSize + self.length)
-        if magic == ETX:
-            self.pos = None
-            return 0
+        if magic != ETX:
+            return None
 
-        return None
+        self.pos = None
+        return 0
 
     def decode(self):
         '''when'''
