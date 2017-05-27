@@ -1217,7 +1217,7 @@ class StopWatch:
 
 STX = 2
 ETX = 3
-LENGTH_SIZE = 2
+LENGTH_SIZE = 4
 HEADER_SIZE = LENGTH_SIZE + 1
 
 class SldeBuf:
@@ -1267,10 +1267,9 @@ class SldeBuf:
             return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)
 
     def encode(self, data):
-        if len(data) <= 0xffff:
-            encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
-            struct.pack_into('!BI%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
-            return encodebuf
+        encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
+        struct.pack_into('!BI%usB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
+        return encodebuf
 
 try:
     import paramiko
