@@ -1,1 +1,1 @@
-SLDE = stx:uint8 + length:uint16@ + data:string(length, 'hex') + etx:uint8
+SLDE = stx:uint8 + length:uint32@ + data:string(length, 'hex') + etx:uint8

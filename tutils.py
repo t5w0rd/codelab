@@ -1244,7 +1244,7 @@ class SldeBuf:
         if self.pos < self.headerSize:
             return self.headerSize - self.pos
 
-        stx, length = struct.unpack_from('!BH', self.writebuf, 0)
+        stx, length = struct.unpack_from('!BI', self.writebuf, 0)
         if stx != STX:
             return None
 
@@ -1269,7 +1269,7 @@ class SldeBuf:
     def encode(self, data):
         if len(data) <= 0xffff:
             encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
-            struct.pack_into('!BH%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
+            struct.pack_into('!BI%dsB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
             return encodebuf
 
 try:
