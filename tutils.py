@@ -619,7 +619,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     # tell peer
                     sndBuf.clear()
                     buf = sndBuf.encode(_packClose(sid))
-                    res = tcp.sendall(buf)
+                    res = sendall(tcp, buf)
                 else:
                     # tell peer
                     _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
