@@ -678,7 +678,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         assert(rhost != HOST_HTTP_PROXY and rport != 0)
                         _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
                     except socket.error, e:
-                        _log.error('%s|sid->%u|new http proxy connection, recv http header failed: %s', who, sid, e)
+                        _log.error('%s|sid->%u|new http proxy connection, recv http header failed: %s, may be droped by fire wall', who, sid, e)
                         conn.close()
                         conn = None
                     except AssertionError:
@@ -1264,9 +1264,10 @@ class SldeBuf:
     def decode(self):
         '''when'''
         if self.pos == None and self.writebuf != None:
-            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)
+            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length).decode('base64')
 
     def encode(self, data):
+        data = data.encode('base64')
         encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
         struct.pack_into('!BI%usB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
         return encodebuf
