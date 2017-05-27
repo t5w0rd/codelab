@@ -452,8 +452,8 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 wfds.remove(wfd)
                 
                 # connect again for check nonblock connect result
-                res = wfd.connect_ex(raddr)
-                if res == 0 or res == errno.EISCONN:
+                res = wfd.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                if res == 0:
                     # connect succ, append conn info, and send data from queue
                     wfd.settimeout(2)
                     _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
