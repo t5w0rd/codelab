@@ -383,7 +383,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
     rcvBuf = SldeBuf()
     toRecv = rcvBuf.headerSize
 
-    tcp.settimeout(2)
+    tcp.settimeout(5)
     def clearAndExit():
         tcp.close()
         if isproxy:
@@ -477,7 +477,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 res = wfd.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
                 if res == 0:
                     # connect succ, append conn info, and send data from queue
-                    wfd.settimeout(2)
+                    wfd.settimeout(5)
                     _log.info('%s|sid->%u|connect(nonblocking) %s:%u successfully, send data from queue|queue->%u', who, sid, raddr[0], raddr[1], len(queue))
                     rfds.append(wfd)
                     conn2sidMap[wfd] = sid
@@ -632,7 +632,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 assert(isproxy)
                 rhost, rport = lstnMap[rfd]
                 conn, addr = rfd.accept()
-                conn.settimeout(2)
+                conn.settimeout(5)
                 sid = sidgen
                 sidgen += 1
 
