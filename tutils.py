@@ -427,6 +427,9 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     sid = conn2sidMap.pop(sock)
                     sid2connMap.pop(sid)
                     sock.close()
+                elif e.errno is None:
+                    # timed out
+                    pass
                 else:
                     raise e
             return e.errno
