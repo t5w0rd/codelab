@@ -26,7 +26,7 @@ import errno
 import traceback
 
 
-__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
+__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'tcpMapProxy', 'tcpMapAgent', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
 
 
 class Net:
@@ -766,7 +766,7 @@ class XNet(Net):
             if not loop:
                 break
 
-    def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
+    def positiveServerThenPositiveClient(self, host, port, rhost, rport, loop=True, **args):
         def psHandler(ps_net):
             def rcHandler(rc_net):
                 _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
@@ -777,6 +777,17 @@ class XNet(Net):
         
         self.positiveServer(host, port, handler=psHandler, loop=loop)
 
+    def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
+        def psHandler(ps_net):
+            def pcHandler(pc_net):
+                _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=pc_net.fileno(), write2_fd=pc_net.fileno())
+            
+            pc_net = XNet()  # reverse client
+            pc_net.positiveClient(rhost, rport, handler=pcHandler, loop=loop)
+            del pc_net
+        
+        self.positiveServer(host, port, handler=psHandler, loop=loop)
+    
     def udpNatTrv(self, key, host, port):
         #addr = self._udp.getsockname()
         '''
@@ -919,114 +930,6 @@ class XNet(Net):
                 data = json.dumps(data)
                 _log.info('send(%s)|key(%s),host A(%s:%d)', cmd, key, *keyAddr[key])
                 self.sendto(data, *keyAddr.pop(key))
-
-
-def _ptyPipe_psrc(args):
-    '''positive server <-> reverse client.'''
-    ps_host = args['host']  # positive server listen host
-    ps_port = args['port']  # positive server listen port
-    rs_host = args['rhost']  # reverse server host
-    rs_port = args['rport']  # reverse server port
-    
-    def psHandler(ps_net):
-        def rcHandler(rc_net):
-            _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
-        
-        rc_net = XNet()  # reverse client
-        rc_net.reverseClient(rs_host, rs_port, handler=rcHandler)
-    
-    ps_net = XNet()  # positive server
-    ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
-    del ps_net
-
-def _ptyPipe_ps(args):
-    '''positive server.'''
-    ps_host = args['host']  # positive server listen host
-    ps_port = args['port']  # positive server listen port
-    cmd = args['cmd']
-    
-    def psHandler(ps_net):
-        #print 'remote connection: %s:%d' % ps_net.raddr()
-        ps_net.rpty(cmd)
-
-    ps_net = XNet()
-    ps_net.positiveServer(ps_host, ps_port, handler=psHandler)
-    del ps_net
-
-def _ptyPipe_pc(args):
-    '''positive client.'''
-    ps_host = args['rhost']  # positive server listen host
-    ps_port = args['rport']  # positive server listen port
-
-    pc_net = XNet()
-    pc_net.positiveClient(ps_host, ps_port)
-    del pc_net
-
-def _ptyPipe_rs(args):
-    '''reverse server.'''
-    rs_host = args['rhost']  # reverse server host
-    rs_port = args['rport']  # reverse server port
-    cmd = args['cmd']
-
-    def rsHandler(rs_net):
-        #print 'remote connection: %s:%d' % rs_net.raddr()
-        rs_net.rpty(cmd)
-
-    rs_net = XNet()
-    rs_net.reverseServer(rs_host, rs_port, handler=rsHandler)
-    del rs_net
-
-def _ptyPipe_rc(args):
-    '''reverse client.'''
-    rs_host = args['host']  # reverse server host
-    rs_port = args['port']  # reverse server port
-
-    rc_net = XNet()
-    rc_net.reverseClient(rs_host, rs_port)
-    del rc_net
-
-def ptyPipe(env, who, **args):
-    '''who:
-    M: middle host with public ip;
-    s: source host with internal ip;
-    t: target host with internal ip;
-
-    relationship:
-    s!t: s and t cannot access each other;
-    t>s: s can access t, but t cannot;
-    M=s: M and s can access each other;
-
-    env:
-    stM or tsM: s!t s>M t>M
-    sMt: s!t s>M M=t
-    '''
-
-    if env == 'tsM':
-        if who == 's':
-            _ptyPipe_pc(args)
-        elif who == 'M':
-            _ptyPipe_psrc(args)
-        elif who == 't':
-            _ptyPipe_rs(args)
-    elif env == 'sMt':
-        if who == 's':
-            _ptyPipe_pc(args)
-        elif who == 'M':
-            raise Exception('Not supported')
-        elif who == 't':
-            _ptyPipe_ps(args)
-    elif env == 'tS':
-        if who == 'S':
-            _ptyPipe_rc(args)
-        elif who == 't':
-            _ptyPipe_rs(args)
-    elif env == 'sT':
-        if who == 's':
-            _ptyPipe_pc(args)
-        elif who == 'T':
-            _ptyPipe_ps(args)
-    else:
-        raise Exception('Not supported')
 
 _net = XNet()
 def net():
@@ -1354,7 +1257,7 @@ try:
 except:
     pass
 
-def sshExecWorker(args):
+def _sshExecWorker(args):
     host, port, user, passwd, cmd = args
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -1393,7 +1296,7 @@ if __name__ == '__main__':
     #op = optparse.OptionGroup(op, 'pty pipe')
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
-    op.add_option('-t', '--type', action='store', dest='type', type=str, help='type, positive or reverse, client or server, must be set (pc/ps/rc/rs/psrc)')
+    op.add_option('-t', '--type', action='store', dest='type', type=str, help='type, positive or reverse, client or server, must be set (pc/ps/rc/rs/pspc/psrc)')
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
@@ -1475,8 +1378,8 @@ if __name__ == '__main__':
         if function == 'pty':
             assert(cstype)
             assert(not ((cstype == 'ps' or cstype == 'rs') and not cmd))
-            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
-            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
+            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr))
+            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, loop=loop)
@@ -1486,14 +1389,16 @@ if __name__ == '__main__':
                 _net.reverseClient(host, port, loop=loop)
             elif cstype == 'rs':
                 _net.reverseServer(rhost, rport, loop=loop, cmd=cmd)
+            elif cstype == 'pspc':
+                _net.positiveServerThenPositiveClient(host, port, rhost, rport, loop=loop)
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
 
         elif function == 'map':
             assert(cstype)
             assert(not ((cstype == 'pc' or cstype == 'rc') and not mapping))
-            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'psrc') and not opts.raddr))
-            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'psrc') and not opts.laddr))
+            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr))
+            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr))
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, handler=_lmap, loop=loop, mapping=mapping)
@@ -1503,8 +1408,11 @@ if __name__ == '__main__':
                 _net.reverseClient(host, port, handler=_lmap, loop=loop, mapping=mapping)
             elif cstype == 'rs':
                 _net.reverseServer(rhost, rport, handler=_rmap, loop=loop)
+            elif cstype == 'pspc':
+                _net.positiveServerThenPositiveClient(host, port, rhost, rport, loop=loop)
             elif cstype == 'psrc':
                 _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
+
         elif function == 'sshexec':
             assert(paramiko)
             assert(raddrs)
@@ -1512,7 +1420,7 @@ if __name__ == '__main__':
             args = []
             for host, port in raddrs:
                 args.append((host, port, user, passwd, cmd))
-            res = multijobs(sshExecWorker, args, workers=len(args))
+            res = multijobs(_sshExecWorker, args, workers=len(args))
             for out, err in res:
                 sys.stdout.write(out)
                 if err:
