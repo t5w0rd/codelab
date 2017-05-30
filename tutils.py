@@ -1232,7 +1232,7 @@ class SldeBuf:
 
     def clear(self):
         self.pos = None
-        self.writebuf = None
+        self.length = None
 
     def write(self, buf):
         '''write headerSize bytes for first, return next bytes to write.if return None, failed.'''
