@@ -1264,10 +1264,10 @@ class SldeBuf:
     def decode(self):
         '''when'''
         if self.pos == None and self.writebuf != None:
-            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length).decode('base64')
+            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
 
     def encode(self, data):
-        data = data.encode('base64')
+        #data = data.encode('base64')
         encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
         struct.pack_into('!BI%usB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
         return encodebuf
