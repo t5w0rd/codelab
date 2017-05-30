@@ -1226,7 +1226,8 @@ class SldeBuf:
     '''slde = stx:uint8 + length:uint16@ + data:string(length) + etx:uint8'''
     headerSize = HEADER_SIZE
 
-    def __init__(self):
+    def __init__(self, bufsize=0x100000):
+        self.writebuf = ctypes.create_string_buffer(bufsize)
         self.clear()
 
     def clear(self):
@@ -1237,7 +1238,6 @@ class SldeBuf:
         '''write headerSize bytes for first, return next bytes to write.if return None, failed.'''
         n = len(buf)
         if self.pos is None:
-            self.writebuf = ctypes.create_string_buffer(self.headerSize + 0xffff + 1)
             self.pos = 0
 
         ctypes.memmove(ctypes.addressof(self.writebuf) + self.pos, buf, n)
@@ -1265,7 +1265,7 @@ class SldeBuf:
 
     def decode(self):
         '''when'''
-        if self.pos == None and self.writebuf != None:
+        if self.pos == None:
             ret = ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
             ret = zlib.decompress(ret)
             print `ret`
