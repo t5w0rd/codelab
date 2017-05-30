@@ -22,6 +22,7 @@ import pickle
 import urlparse
 import collections
 import errno
+import base64
 
 import traceback
 
@@ -1264,10 +1265,13 @@ class SldeBuf:
     def decode(self):
         '''when'''
         if self.pos == None and self.writebuf != None:
-            return ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
+            ret = ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
+            print `ret`
+            return base64.decodestring(ret)
 
     def encode(self, data):
         #data = data.encode('base64')
+        data = base64.encodestring(data)
         encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
         struct.pack_into('!BI%usB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
         return encodebuf
