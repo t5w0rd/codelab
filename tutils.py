@@ -576,9 +576,9 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
 
                     elif cmd == CMD_DATA and sid in sid2connMap:
                         # cmd send data
-                        _log.info('%s|sid->%u|cmd->send data to connection', who, sid)
                         conn = sid2connMap[sid]
                         length, data = _unpackData(buf, pos)
+                        _log.info('%s|sid->%u|cmd->send data to connection|size->%u', who, sid, length)
                         assert(len(data) == length)
                         if conn in connPendMap:
                             # connect is pending
@@ -624,7 +624,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     res = sendall(tcp, buf)
                 else:
                     # tell peer
-                    _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection', who, sid)
+                    _log.info('%s|sid->%u|receive data from connection, tell remote peer to send data to connection|size->%u', who, sid, len(s))
                     sndBuf.clear()
                     buf = sndBuf.encode(_packData(sid, s))
                     res = sendall(tcp, buf)
