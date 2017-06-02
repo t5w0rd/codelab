@@ -1394,10 +1394,7 @@ usage:
     ./tutils.py genargvs {self} argvs...
     ./tutils.py
 
-bash_mfrjobd=`ps aux|grep mfrjobd|grep -v grep|awk '{print $2}'`
-if [ -z "$bash_mfrjobd" ]; then
-    mfrjobd
-fi
+if [ -z "`pgrep tagent|awk '{print $1}'`" ] && [ -z "`hash tagent 2>&1`" ]; then tagent; fi
 '''
 if __name__ == '__main__':
     me = os.path.abspath(sys.argv[0])
