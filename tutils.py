@@ -28,7 +28,7 @@ import zlib
 import traceback
 
 
-__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'tcpMapProxy', 'tcpMapAgent', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf']
+__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'tcpMapProxy', 'tcpMapAgent', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf', 'writeAttachData', 'readAttachData', 'shell']
 
 
 class Net:
@@ -1159,6 +1159,10 @@ def readAttachData(fn, header, end_offset=-1024):
 
     return None
 
+def shell(cmd):
+    with os.popen(cmd) as pipe:
+        return pipe.read()
+
 try:
     import SocketServer
     import proto
@@ -1397,6 +1401,10 @@ fi
 '''
 if __name__ == '__main__':
     me = os.path.abspath(sys.argv[0])
+    if not os.path.exists(me):
+        res = shell('which %s' % (sys.argv[0],)).rstrip()
+        if os.path.exists(res):
+            me = res
 
     if len(sys.argv) == 1:
         attachData = readAttachData(me, AD_HEADER)
