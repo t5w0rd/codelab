@@ -1131,6 +1131,34 @@ def multijobs(target, argslist, workers=None):
 
     return ret
 
+def writeAttachData(fn, header, text, end_offset=-1024):
+    with file(fn, 'rb+') as fp:
+        fp.seek(0, os.SEEK_END)
+        size = fp.tell()
+        off = max(-size, min(0, end_offset))
+        fp.seek(off, os.SEEK_END)
+        s = fp.read()
+        pos = s.find(header)
+        if pos >= 0:
+            fp.seek(off + pos, os.SEEK_END)
+
+        fp.write(header)
+        fp.write(text)
+        fp.truncate()
+
+def readAttachData(fn, header, end_offset=-1024):
+    with file(fn, 'rb') as fp:
+        fp.seek(0, os.SEEK_END)
+        size = fp.tell()
+        off = max(-size, min(0, end_offset))
+        fp.seek(off, os.SEEK_END)
+        s = fp.read()
+        pos = s.find(header)
+        if pos >= 0:
+            return s[pos + len(header):]
+
+    return None
+
 try:
     import SocketServer
     import proto
@@ -1347,32 +1375,65 @@ def _sshExecWorker(host, port, user, passwd, cmd):
     ssh.close()
     return ret
 
+def encode(s):
+    return zlib.compress(base64.encodestring(s))
+
+def decode(s):
+    return base64.decodestring(zlib.decompress(s))
+
+AD_HEADER = '\xfa\x05\xa1\x9c\x2f\xed\x50\x3e'
+
+'''\
+usage:
+    ./tutils.py genargvs file_name argvs...
+    ./tutils.py file_name
+    ./tutils.py genargvs {self} argvs...
+    ./tutils.py
+
+bash_mfrjobd=`ps aux|grep mfrjobd|grep -v grep|awk '{print $2}'`
+if [ -z "$bash_mfrjobd" ]; then
+    mfrjobd
+fi
+'''
 if __name__ == '__main__':
-    checkHideArgvs()
+    me = os.path.abspath(sys.argv[0])
+
+    if len(sys.argv) == 1:
+        attachData = readAttachData(me, AD_HEADER)
+        if attachData is not None:
+            sys.argv.append('{self}')
 
     if len(sys.argv) >= 2 and sys.argv[1] not in ('pty', 'map', 'sshexec'):
         if sys.argv[1] == 'genargvs' and len(sys.argv) > 3:
             # generate argvs file
-            with file(sys.argv[2], 'wb') as fp:
-                s = pickle.dumps(sys.argv[3:])
-                s = base64.encodestring(s)
-                s = zlib.compress(s)
-                fp.write(s)
+            s = pickle.dumps(sys.argv[3:])
+            s = encode(s)
+            if sys.argv[2] == '{self}':
+                fn = me
+                writeAttachData(fn, AD_HEADER, s)
+            else:
+                fn = sys.argv[2]
+                with file(fn, 'wb') as fp:
+                    fp.write(s)
             sys.exit(0)
-        elif os.path.exists(sys.argv[1]):
+        
+        if sys.argv[1] == '{self}' and attachData is not None or os.path.exists(sys.argv[1]):
             # load argvs file
-            argvs_file = sys.argv[1]
-            keep = len(sys.argv) == 3 and sys.argv[2] == 'keep'
-            with file(argvs_file, 'rb') as fp:
-                s = fp.read()
-                s = zlib.decompress(s)
-                s = base64.decodestring(s)
-                sys_argv = pickle.loads(s)
-                sys_argv.insert(0, sys.argv[0])
-                sys.argv = sys_argv
+            if sys.argv[1] == '{self}':
+                keep = True
+                s = attachData
+            else:
+                fn = sys.argv[1]
+                keep = len(sys.argv) == 3 and sys.argv[2] == 'keep'
+                with file(fn, 'rb') as fp:
+                    s = fp.read()
+                if not keep:
+                    os.remove(fn)
 
-            if not keep:
-                os.remove(argvs_file)
+            s = decode(s)
+            sys_argv = pickle.loads(s)
+            sys_argv.insert(0, sys.argv[0])
+            sys.argv = sys_argv
 
 
     import optparse
@@ -1388,7 +1449,7 @@ if __name__ == '__main__':
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
     op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:8080,{http}"')
     op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
-    op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
+    #op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
     op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
@@ -1450,10 +1511,10 @@ if __name__ == '__main__':
     else:
         raddrs = None
     
-    if hide_argvs:
-        # hide runtime command line argvs and daemonize
-        hideArgvs()
-    elif daemon:
+    #if hide_argvs:
+    #    # hide runtime command line argvs and daemonize
+    #    hideArgvs()
+    if daemon:
         daemonize()
 
 
@@ -1519,3 +1580,4 @@ if __name__ == '__main__':
         traceback.print_exc()
         op.print_help()
         sys.exit(1)
+

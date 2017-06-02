@@ -5,44 +5,25 @@ import os, sys, time, re, json, socket
 import tutils
 import proto
 
-p = proto.EqParser()
-p.execute('''
-import('elf.proto')
-elf:ELF64
-phdr:ELF64_PHDR
-print(calcsize(phdr))
+MAGIC='\n\n# IKJBGAD&ADE\n\n'
+import os, sys
+def attachData(fn, header, text, end_offset=-100):
+    with file(fn, 'rb+') as fp:
+        fp.seek(0, os.SEEK_END)
+        size = fp.tell()
+        off = max(-size, min(0, end_offset))
+        fp.seek(off, os.SEEK_END)
+        s = fp.read()
+        pos = s.find(MAGIC)
+        if pos >= 0:
+            fp.seek(off + pos, os.SEEK_END)
 
-TESTB = c1:uint8 + b1:bits(2) + b2:bits(3) + b3:bits(2) + b4:bits(1) + c2:uint8
-test:TESTB
-test.c1 = 1
-test.b1 = 1
-test.b2 = 0
-test.b3 = 0
-test.b4 = 1
-test.c2 = 2
-''')
+        fp.write(header)
+        fp.write(text)
+        fp.truncate()
 
-p.execute('''
-#import('slde.proto')
-SLDE = stx:uint8 + length:uint16@ + data:string(length) + etx:uint8
-slde:SLDE
-slde.stx = 0x02
-slde.etx = 0x03
-data:string() = "hello"
-slde.length = calcsize(data)
-slde.data = data
-encode(slde)
-ss:string() = "test string"
-import('png.proto')
-png:PNG
-''')
+print os.path.abspath(sys.argv[0])
 
-v = p.getVar('png')
-with file('test.png', 'rb') as fp:
-    data = fp.read()
-v.decode(data)
+# IKJBGAD&ADE
 
-v = p.getVar('png')
-#v.encode()
-print len(v.encode())
-print v.dump()
+#1234jkjjkj lkjadsf
