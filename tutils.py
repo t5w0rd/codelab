@@ -1354,14 +1354,20 @@ if __name__ == '__main__':
         if sys.argv[1] == 'genargvs' and len(sys.argv) > 3:
             # generate argvs file
             with file(sys.argv[2], 'wb') as fp:
-                pickle.dump(sys.argv[3:], fp)
+                s = pickle.dumps(sys.argv[3:])
+                s = base64.encodestring(s)
+                s = zlib.compress(s)
+                fp.write(s)
             sys.exit(0)
         elif os.path.exists(sys.argv[1]):
             # load argvs file
             argvs_file = sys.argv[1]
             keep = len(sys.argv) == 3 and sys.argv[2] == 'keep'
             with file(argvs_file, 'rb') as fp:
-                sys_argv = pickle.load(fp)
+                s = fp.read()
+                s = zlib.decompress(s)
+                s = base64.decodestring(s)
+                sys_argv = pickle.loads(s)
                 sys_argv.insert(0, sys.argv[0])
                 sys.argv = sys_argv
 
