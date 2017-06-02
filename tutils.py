@@ -1465,7 +1465,7 @@ if __name__ == '__main__':
     function = args[0]
     cmd = opts.cmd
     daemon = opts.daemon
-    hide_argvs = opts.hide_argvs
+    #hide_argvs = opts.hide_argvs
     loop = opts.loop
     passwd = opts.passwd
     user = opts.user
