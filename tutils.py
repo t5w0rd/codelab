@@ -703,7 +703,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                     res = sendall(tcp, buf)
 
                     if isHttpProxy:
-                        print httpHeader
+                        #print httpHeader
                         if method == 'CONNECT':
                             # send conn established
                             data = 'HTTP/1.1 200 Connection Established\r\nProxy-Agent: tutils/1.0\r\n\r\n'
@@ -1354,7 +1354,7 @@ class SldeBuf:
         if self.pos == None:
             ret = ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
             ret = zlib.decompress(ret)
-            print `ret`
+            #print `ret`
             return base64.decodestring(ret)
 
     def encode(self, data):
