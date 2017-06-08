@@ -1396,7 +1396,7 @@ usage:
 
 if [ -z "`pgrep tagent|awk '{print $1}'`" ] && [ -z "`hash tagent 2>&1`" ]; then tagent; fi
 '''
-if __name__ == '__main__':
+def main():
     me = os.path.abspath(sys.argv[0])
     if not os.path.exists(me):
         res = shell('which %s' % (sys.argv[0],)).rstrip()
@@ -1444,6 +1444,8 @@ if __name__ == '__main__':
     import optparse
 
     op = optparse.OptionParser()
+    if sys.argv[0].find('tutils') < 0:
+        op.print_help = sys.exit
     op.set_usage('%prog <FUNCTION> [options]\n  FUNCTION\tsub function to use (pty/map/sshexec/genargvs)')
     #op = optparse.OptionGroup(op, 'pty pipe')
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
@@ -1582,7 +1584,16 @@ if __name__ == '__main__':
             assert(not 'unsupported FUNCTION')
 
     except AssertionError:
-        traceback.print_exc()
         op.print_help()
+        traceback.print_exc()
         sys.exit(1)
+
+if __name__ == '__main__':
+    if sys.argv[0].find('tutils') < 0:
+        try:
+            main()
+        except:
+            pass
+    else:
+        main()
 
