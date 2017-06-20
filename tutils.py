@@ -99,7 +99,7 @@ class Net:
         self._tcp.settimeout(timeout)
         ret = None
         while ret == '' or size == None or ret == None or len(ret) < size:
-            n = (not size and 0xffff) or (size - (ret != None and len(ret) or 0))
+            n = (not size and 0xffff) or (size - (len(ret) if ret != None else 0))
             try:
                 s = self._tcp.recv(n)
             except socket.timeout:
@@ -172,7 +172,7 @@ class Net:
 
         sent = 0
         while size is None or sent < size:
-            n = (size is not None and size - sent) or 512
+            n = (size - sent) if size is not None else 512
             s = fp.read(n)
             if not s:
                 break
@@ -187,7 +187,7 @@ class Net:
         self._tcp.settimeout(timeout)
         recved = 0
         while size is None or recved < size:
-            n = (size is not None and size - recved) or 0xffff
+            n = (size - recved) if size is not None else 0xffff
             s = self._tcp.recv(n)
             if not s:
                 break
@@ -411,7 +411,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                 tcpSndQueue.popleft()
             tcpSndPend = False
         except socket.error, e:
-            assert(e.errno == errno.EAGAIN)
+            assert e.errno == errno.EAGAIN
             tcpSndPend = True
             tcpSndQueue.append(data)
             wfds.append(tcp)
@@ -439,7 +439,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             return e.errno
 
     if isproxy:
-        assert(mapping)
+        assert mapping
         who = 'proxy'
         mapping = list(mapping)
         sidgen = 1
@@ -543,8 +543,8 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         _log.info('%s|remote peer is alive', who)
                     elif cmd == CMD_CONNECT:
                         # cmd connect
-                        assert(not isproxy)
-                        assert(sid not in sid2connMap)
+                        assert not isproxy
+                        assert sid not in sid2connMap
                         raddr = _unpackConnect(buf, pos)
                         _log.info('%s|sid->%u|cmd->connect %s:%u', who, sid, raddr[0], raddr[1])
                         
@@ -553,7 +553,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         try:
                             conn.settimeout(0)
                             res = conn.connect_ex(raddr)
-                            assert(res == errno.EINPROGRESS)
+                            assert res == errno.EINPROGRESS
 
                             # nonblocking IO: append conn pending info
                             wfds.append(conn)
@@ -579,7 +579,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                         conn = sid2connMap[sid]
                         length, data = _unpackData(buf, pos)
                         _log.info('%s|sid->%u|cmd->send data to connection|size->%u', who, sid, length)
-                        assert(len(data) == length)
+                        assert len(data) == length
                         if conn in connPendMap:
                             # connect is pending
                             _, _, queue, _ = connPendMap[conn]
@@ -631,7 +631,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             
             elif rfd in lstnMap:
                 # new connection
-                assert(isproxy)
+                assert isproxy
                 rhost, rport = lstnMap[rfd]
                 conn, addr = rfd.accept()
                 conn.settimeout(5)
@@ -658,7 +658,7 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                                     raddr = res[1]
                                     res = raddr.split(':')
                                     rhost = res[0]
-                                    rport = len(res) >= 2 and int(res[1]) or 443
+                                    rport =  int(res[1]) if len(res) >= 2 else 443
                                     #break
                                 else:
                                     url = res[1]
@@ -670,14 +670,14 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                                 raddr = line[len('Host: '):].rstrip()
                                 res = raddr.split(':')
                                 rhost = res[0]
-                                rport = len(res) == 2 and int(res[1]) or 80
+                                rport = int(res[1]) if len(res) == 2 else 80
                             elif line.find('Proxy-Connection: ') == 0:
                                 # Proxy-Connection skip
                                 proxyConnection = True
                                 #httpHeaderLines[index] = line.replace('Proxy-Connection: ', 'Connection: ', 1)
                             if not proxyConnection:
                                 httpHeader += line
-                        assert(rhost != HOST_HTTP_PROXY and rport != 0)
+                        assert rhost != HOST_HTTP_PROXY and rport != 0
                         _log.info('%s|sid->%u|new http proxy connection, tell remote peer to request %s:%u', who, sid, rhost, rport)
                     except socket.error, e:
                         _log.error('%s|sid->%u|new http proxy connection, recv http header failed: %s, may be droped by fire wall', who, sid, e)
@@ -831,7 +831,7 @@ class XNet(Net):
         data = self.recvfrom()
         data = json.loads(data)
         cmd = data['cmd']
-        assert(cmd == 'udpNatTrv')
+        assert cmd == 'udpNatTrv'
 
         host, port = self.addru()
         addr = tuple(data['addr'])
@@ -868,7 +868,7 @@ class XNet(Net):
             data = self.recvfrom()
             data = json.loads(data)
             cmd = data['cmd']
-            assert(cmd == 'udpNatTrv_ready' and self.addru() == addr)
+            assert cmd == 'udpNatTrv_ready' and self.addru() == addr
             _log.info('recv(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
             _log.info('success|key(%s),peer(%s:%d)', key, *addr)
 
@@ -894,12 +894,12 @@ class XNet(Net):
             data = json.loads(data)
             cmd = data['cmd']
             if cmd == 'udpNatTrv_drop':
-                assert(self.addru() == addr)
+                assert self.addru() == addr
                 _log.info('recv(%s)|key(%s),peer(%s:%d)', cmd, key, *addr)
                 data = self.recvfrom()
                 data = json.loads(data)
                 cmd = data['cmd']
-            assert(cmd == 'udpNatTrv_ready' and self.addru() == (host, port))
+            assert cmd == 'udpNatTrv_ready' and self.addru() == (host, port)
             _log.info('recv(%s)|key(%s),server(%s:%d)', cmd, key, host, port)
 
             # a->B  ok
@@ -967,10 +967,10 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         pid = os.fork()
         if pid > 0:
             # exit first parent
-            sys.exit(0)
+            os._exit(0)
     except OSError, e: 
         sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
-        sys.exit(1)
+        os._exit(1)
 
     # decouple from parent environment
     if not keepwd:
@@ -983,7 +983,7 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         pid = os.fork()
         if pid > 0:
             # exit from second parent
-            sys.exit(0)
+            os._exit(0)
 
         # redirect standard file descriptors
         sys.stdout.flush()
@@ -996,7 +996,7 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=
         os.dup2(se.fileno(), sys.stderr.fileno())
     except OSError, e: 
         sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
-        sys.exit(1)
+        os._exit(1)
 
             
 def hideArgvs(stdin='/dev/null', stdout='/dev/null', stderr='/dev/null', keepwd=False):
@@ -1081,7 +1081,7 @@ def multijobs(target, argslist, workers=None):
     # add proc to waiting
     waiting = collections.deque()
     for args in argslist:
-        args_wapper = [target, args]
+        args_wapper = (target, args)
         proc = multiprocessing.Process(target=worker, args=args_wapper)
         waiting.append(proc)
 
@@ -1504,7 +1504,7 @@ def main():
                 _rhost, = res
                 _rport = 0
             else:
-                assert(False)
+                assert False
             mapping.append(((_host, _port), (_rhost, _rport)))
     else:
         mapping = None
@@ -1530,10 +1530,10 @@ def main():
 
     try:
         if function == 'pty':
-            assert(cstype)
-            assert(not ((cstype == 'ps' or cstype == 'rs') and not cmd))
-            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr))
-            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr))
+            assert cstype
+            assert not ((cstype == 'ps' or cstype == 'rs') and not cmd)
+            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr)
+            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr)
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, loop=loop)
@@ -1549,10 +1549,10 @@ def main():
                 _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
 
         elif function == 'map':
-            assert(cstype)
-            assert(not ((cstype == 'pc' or cstype == 'rc') and not mapping))
-            assert(not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr))
-            assert(not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr))
+            assert cstype
+            assert not ((cstype == 'pc' or cstype == 'rc') and not mapping)
+            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr)
+            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr)
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, handler=_lmap, loop=loop, mapping=mapping)
@@ -1568,9 +1568,9 @@ def main():
                 _net.positiveServerThenReverseClient(host, port, rhost, rport, loop=loop)
 
         elif function == 'sshexec':
-            assert(paramiko)
-            assert(raddrs)
-            assert(user and passwd)
+            assert paramiko
+            assert raddrs
+            assert user and passwd
             argslist = []
             for host, port in raddrs:
                 argslist.append((host, port, user, passwd, cmd))
@@ -1581,7 +1581,7 @@ def main():
                     sys.stdout.write(err)
             sys.stdout.flush()
         else:
-            assert(not 'unsupported FUNCTION')
+            assert not 'unsupported FUNCTION'
 
     except AssertionError:
         op.print_help()
