@@ -1,2 +1,2 @@
 #!/bin/sh
-./tutils.py map -tpc -rtutils.com:28080 -mlocalhost:8080,{http} -L
+./tutils.py map -tps -l0.0.0.0:28080 -L
