@@ -1,0 +1,4 @@
+import 'eth.proto'
+PCAP = pcapHdr:PCAP_HDR + pktHdr:PKT_HDR + eth:ETH
+PCAP_HDR = magic:uint32 + verMajor:uint16 + verMinor:uint16 + thiszone:uint32 + sigfigs:uint32 + snaplen:uint32 + linktype:uint32
+PKT_HDR = timestampSec:uint32 + timestampMSec:uint32 + caplen:uint32 + len:uint32
