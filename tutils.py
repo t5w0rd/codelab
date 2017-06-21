@@ -565,14 +565,12 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
                             #conn2sidMap[conn] = sid
                             #sid2connMap[sid] = conn
                         except socket.error, msg:
-                            raise socket.error(msg)
-                            # blocking IO: connect failed
-                            #_log.error('%s|sid->%u|connect failed: %s, tell remote peer to close connection', who, sid, msg)
-                            #conn.close()
+                            _log.error('%s|sid->%u|connect failed: %s, tell remote peer to close connection', who, sid, msg)
+                            conn.close()
                             # tell peer
-                            #sndBuf.clear()
-                            #buf = sndBuf.encode(_packClose(sid))
-                            #res = sendall(tcp, buf)
+                            sndBuf.clear()
+                            buf = sndBuf.encode(_packClose(sid))
+                            res = sendall(tcp, buf)
 
                     elif cmd == CMD_DATA and sid in sid2connMap:
                         # cmd send data
