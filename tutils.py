@@ -788,23 +788,23 @@ class XNet(Net):
 
     def positiveServerThenPositiveClient(self, host, port, rhost, rport, loop=True, **args):
         def psHandler(ps_net):
-            def rcHandler(rc_net):
-                _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
-            
-            rc_net = XNet()  # reverse client
-            rc_net.reverseClient(rhost, rport, handler=rcHandler, loop=loop)
-            del rc_net
-        
-        self.positiveServer(host, port, handler=psHandler, loop=loop)
-
-    def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
-        def psHandler(ps_net):
             def pcHandler(pc_net):
                 _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=pc_net.fileno(), write2_fd=pc_net.fileno())
             
             pc_net = XNet()  # reverse client
             pc_net.positiveClient(rhost, rport, handler=pcHandler, loop=loop)
             del pc_net
+        
+        self.positiveServer(host, port, handler=psHandler, loop=loop)
+
+    def positiveServerThenReverseClient(self, host, port, rhost, rport, loop=True, **args):
+        def psHandler(ps_net):
+            def rcHandler(rc_net):
+                _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
+            
+            rc_net = XNet()  # reverse client
+            rc_net.reverseClient(rhost, rport, handler=rcHandler, loop=loop)
+            del rc_net
         
         self.positiveServer(host, port, handler=psHandler, loop=loop)
     
