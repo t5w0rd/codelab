@@ -792,7 +792,7 @@ class XNet(Net):
                 _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=pc_net.fileno(), write2_fd=pc_net.fileno())
             
             pc_net = XNet()  # reverse client
-            pc_net.positiveClient(rhost, rport, handler=pcHandler, loop=loop)
+            pc_net.positiveClient(rhost, rport, handler=pcHandler, loop=False)
             del pc_net
         
         self.positiveServer(host, port, handler=psHandler, loop=loop)
@@ -803,7 +803,7 @@ class XNet(Net):
                 _copyLoop(read_fd=ps_net.fileno(), write_fd=ps_net.fileno(), read2_fd=rc_net.fileno(), write2_fd=rc_net.fileno())
             
             rc_net = XNet()  # reverse client
-            rc_net.reverseClient(rhost, rport, handler=rcHandler, loop=loop)
+            rc_net.reverseClient(rhost, rport, handler=rcHandler, loop=False)
             del rc_net
         
         self.positiveServer(host, port, handler=psHandler, loop=loop)
