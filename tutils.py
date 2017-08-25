@@ -417,26 +417,29 @@ def _tcpAddressMapping(tcp, isproxy, mapping):
             wfds.append(tcp)
     '''
     def sendall(sock, data):
-        try:
-            sock.sendall(data)
-            return 0
-        except socket.error, e:
-            if sock is tcp:
-                raise e
-            else:
-                sid = conn2sidMap[sock]
-                if e.errno == errno.EPIPE:
-                    rfds.remove(sock)
-                    conn2sidMap.pop(sock)
-                    sid2connMap.pop(sid)
-                    sock.close()
-                elif e.errno is None:
-                    # timed out
-                    _log.error('%s|sid->%u|send data timeout', who, sid)
-                    pass
-                else:
+        while True:
+            try:
+                sock.sendall(data)
+                return 0
+            except socket.timeout:
+                time.sleep(0.1)
+            except socket.error, e:
+                if sock is tcp:
                     raise e
-            return e.errno
+                else:
+                    sid = conn2sidMap[sock]
+                    if e.errno == errno.EPIPE:
+                        rfds.remove(sock)
+                        conn2sidMap.pop(sock)
+                        sid2connMap.pop(sid)
+                        sock.close()
+                    elif e.errno is None:
+                        # timed out
+                        _log.error('%s|sid->%u|send data timeout', who, sid)
+                        pass
+                    else:
+                        raise e
+                return e.errno
 
     if isproxy:
         assert mapping
