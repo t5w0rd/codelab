@@ -25,6 +25,7 @@ import errno
 import base64
 import zlib
 import random
+import shutil
 
 import traceback
 
@@ -1429,6 +1430,13 @@ def main():
             s = encode(s)
             if sys.argv[2] == '{self}':
                 fn = me
+                writeAttachData(fn, AD_HEADER, s)
+            elif sys.argv[2] == '{copy}':
+                fna, fnb = os.path.splitext(me)
+                fn = fna + '_copy'
+                if fnb:
+                    fn += fnb
+                shutil.copy2(me, fn)
                 writeAttachData(fn, AD_HEADER, s)
             else:
                 fn = sys.argv[2]
