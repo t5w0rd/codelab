@@ -24,6 +24,7 @@ import collections
 import errno
 import base64
 import zlib
+import random
 
 import traceback
 
@@ -1308,10 +1309,19 @@ STX = 2
 ETX = 3
 LENGTH_SIZE = 4
 HEADER_SIZE = LENGTH_SIZE + 1
+XORCODE_SEED = 81037
+
+def xorcode(s, seed):
+    p = ctypes.pointer(ctypes.create_string_buffer(s, len(s)))[0]
+    rnd = random.Random(seed)
+    for i in xrange(len(s)):
+        p[i] = chr(ord(p[i]) ^ rnd.randint(0, 255))
+    return p.raw
 
 class SldeBuf:
     '''slde = stx:uint8 + length:uint16@ + data:string(length) + etx:uint8'''
     headerSize = HEADER_SIZE
+    xorseed = XORCODE_SEED
 
     def __init__(self, bufsize=0x100000):
         self.writebuf = ctypes.create_string_buffer(bufsize)
@@ -1354,14 +1364,17 @@ class SldeBuf:
         '''when'''
         if self.pos == None:
             ret = ctypes.string_at(ctypes.addressof(self.writebuf) + self.headerSize, self.length)  #.decode('base64')
+            if self.xorseed != 0:
+                ret = xorcode(ret, self.xorseed)
             ret = zlib.decompress(ret)
-            #print `ret`
             return base64.decodestring(ret)
 
     def encode(self, data):
         #data = data.encode('base64')
         data = base64.encodestring(data)
         data = zlib.compress(data)
+        if self.xorseed != 0:
+            data = xorcode(data, self.xorseed)
         encodebuf = ctypes.create_string_buffer(len(data) + self.headerSize + 1)
         struct.pack_into('!BI%usB' % (len(data),), encodebuf, 0, STX, len(data), data, ETX)
         return encodebuf
@@ -1381,10 +1394,10 @@ def _sshExecWorker(host, port, user, passwd, cmd):
     return ret
 
 def encode(s):
-    return zlib.compress(base64.encodestring(s))
+    return xorcode(zlib.compress(base64.encodestring(s)), XORCODE_SEED)
 
 def decode(s):
-    return base64.decodestring(zlib.decompress(s))
+    return base64.decodestring(zlib.decompress(xorcode(s, XORCODE_SEED)))
 
 AD_HEADER = '\xfa\x05\xa1\x9c\x2f\xed\x50\x3e'
 
