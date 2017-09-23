@@ -1344,12 +1344,14 @@ class SldeBuf:
         if self.pos < self.headerSize:
             return self.headerSize - self.pos
 
-        stx, length = struct.unpack_from('!BI', self.writebuf, 0)
-        if stx != STX:
-            return None
+        if self.length is None:
+            stx, length = struct.unpack_from('!BI', self.writebuf, 0)
+            if stx != STX:
+                return None
+                
+            self.length = length
 
-        self.length = length
-        left = self.headerSize - self.pos + length + 1
+        left = self.headerSize + self.length + 1 - self.pos
         if left > 0:
             return left
         
