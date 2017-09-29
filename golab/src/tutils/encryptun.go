@@ -70,7 +70,7 @@ func packData(connId uint32, data []byte) (ret []byte) {
 	binary.Write(payload, binary.BigEndian, dataLen)
 	binary.Write(payload, binary.BigEndian, data)
 	ret = NewSldeWithData(payload.Bytes()).Bytes()
-	return
+	return ret
 }
 
 func packClose(connId uint32) (ret []byte) {
@@ -78,13 +78,13 @@ func packClose(connId uint32) (ret []byte) {
 	binary.Write(payload, binary.BigEndian, cmd_close)
 	binary.Write(payload, binary.BigEndian, connId)
 	ret = NewSldeWithData(payload.Bytes()).Bytes()
-	return
+	return ret
 }
 
 func unpackCmd(data []byte) (cmd uint16, payload *bytes.Buffer) {
 	payload = bytes.NewBuffer([]byte{})
 	binary.Read(payload, binary.BigEndian, &cmd)
-	return
+	return cmd, payload
 }
 
 func unpackData(payload *bytes.Buffer) (connId uint32, data []byte) {
@@ -93,12 +93,12 @@ func unpackData(payload *bytes.Buffer) (connId uint32, data []byte) {
 	binary.Read(payload, binary.BigEndian, &dataLen)
 	data = make([]byte, dataLen)
 	binary.Read(payload, binary.BigEndian, data)
-	return
+	return connId, data
 }
 
 func unpackClose(payload *bytes.Buffer) (connId uint32) {
 	binary.Read(payload, binary.BigEndian, &connId)
-	return
+	return connId
 }
 
 func proxyConnHandler(peer *net.TCPConn, conn *net.TCPConn, connId uint32) {
