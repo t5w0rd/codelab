@@ -9,6 +9,9 @@ import (
 
 func main() {
 	args := os.Args;
+	if len(os.Args) < 2 {
+		return;
+	}
 	appType := args[1];
 	switch appType {
 	case "proxy":
