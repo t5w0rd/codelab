@@ -9,7 +9,7 @@ import (
 
 func main() {
 	args := os.Args;
-	if len(os.Args) < 2 {
+	if len(args) < 2 {
 		return;
 	}
 	appType := args[1];
@@ -54,5 +54,8 @@ func main() {
 
 		agentAddrStr := args[3];
 		tutils.EncryptAgent(peer, agentAddrStr);
+    case "messager":
+        addr := args[2]
+        tutils.StartMessagerServer(addr)
 	}
 }
