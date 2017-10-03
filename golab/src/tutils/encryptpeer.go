@@ -138,8 +138,9 @@ func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem, connId uint32
             // drop
             println("drop")
         default:
+            println("@@send notify chan", connId)
             self.connCloseNotifyChan <- connId
-            println("@@@@@@!!!!!@@@@@")
+            println("##send notify chan", connId)
             break EndFor
         }
     }
@@ -261,9 +262,9 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
         log.Printf("!!closed connId(%d)\n", connId)
         return
     }
-    println(connId, "@@send conn chan")
+    println("@@send conn chan", connId)
     connChan <- connChanItem{cmd, reader}
-    println(connId, "##send conn chan<-")
+    println("##send conn chan", connId)
 }
 
 // 主连接处理循环
