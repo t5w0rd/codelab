@@ -17,12 +17,13 @@ type Slde struct {
     length int
 }
 
-func XorEncrypt(data []byte, seed int64) []byte {
+func XorEncrypt(data []byte, seed int64) (ret []byte) {
+    ret = make([]byte, len(data))
     rnd := rand.New(rand.NewSource(seed))
-    for i := 0; i < len(data); i++ {
-        data[i] ^= byte(rnd.Intn(256))
+    for i, v := range data {
+        ret[i] = v ^ byte(rnd.Intn(256))
     }
-    return data
+    return ret
 }
 
 func (self *Slde) Write(data []byte) (int, error) {
@@ -69,12 +70,12 @@ func (self *Slde) Decode() (ret []byte, err error) {
     }
 
     ret = self.writebuf.Bytes()[:self.length]
-    XorEncrypt(ret, 776103)
+    ret = XorEncrypt(ret, 776103)
     return ret, nil
 }
 
 func (self *Slde) Encode(data []byte) ([]byte, error) {
-    XorEncrypt(data, 776103)
+    data = XorEncrypt(data, 776103)
     self.length = len(data)
     self.writebuf.Reset()
     binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
