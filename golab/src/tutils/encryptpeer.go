@@ -200,7 +200,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
             item, ok = <-connChan
             if !ok {
                 log.Printf("conn(%d) chan is closed\n", connId)
-                self.connChanMap.Delete(connId)
+                //self.connChanMap.Delete(connId)
                 if conn != nil {
                     conn.Close()
                 }
@@ -230,7 +230,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                 conn.Write(data)
             case cmd_close:
                 unpackClose(item.reader)
-                self.connChanMap.Delete(connId)
+                //self.connChanMap.Delete(connId)
                 conn.Close()
                 log.Printf("peer op, notify to close conn(%d) chan\n", connId)
                 //safeClose(connChan)
@@ -314,6 +314,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
                     if v, ok := self.connChanMap.Load(connId); ok {
                         connChan := v.(chan connChanItem)
                         log.Printf("close conn(%d) chan\n", connId)
+                        self.connChanMap.Delete(connId)
                         close(connChan)
                     }
                 }
