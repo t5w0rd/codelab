@@ -53,8 +53,10 @@ func (self *Slde) Write(data []byte) (int, error) {
         //var stx2 byte
         //binary.Read(self.writebuf, binary.BigEndian, &stx2)
         var rid uint16
+        println("@@", self.writebuf.Len())
         binary.Read(self.writebuf, binary.BigEndian, &rid)
         log.Printf("decode slde.rid: %04X\n", rid)
+        println("@@2", self.writebuf.Len())
 
         var length int32
         binary.Read(self.writebuf, binary.BigEndian, &length)
