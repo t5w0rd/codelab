@@ -15,13 +15,24 @@ func printb(data []byte) {
     println()
 }
 
+func sendchan(c chan int) {
+    for i:= 0; ; i++{
+        c <- i
+    }
+}
+
 func test() {
-    c := make(chan int, 10)
-    c <- 1
-    c <- 2
-    <-c
-    a := <- c
-    println(a)
+    c := make(chan int, 5)
+    go sendchan(c)
+    //time.Sleep(1e9)
+    a := 5
+    switch a {
+    case 5:
+        println(a)
+    default:
+        println("def")
+
+    }
 }
 
 func main() {

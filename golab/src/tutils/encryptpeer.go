@@ -43,7 +43,7 @@ type EncryptTunPeer struct {
     addr *net.TCPAddr
     mode byte
     connChanMap *sync.Map  // map[uint32] chan connChanItem
-    connCloseNotifyChan chan chan connChanItem
+    connCloseNotifyChan chan uint32
     lstn *net.TCPListener
 }
 
@@ -53,7 +53,7 @@ func NewEncryptTunProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
     obj.addr, _ = net.ResolveTCPAddr("tcp", laddr)
     obj.mode = server_mode_proxy
     obj.connChanMap = new(sync.Map)
-    obj.connCloseNotifyChan = make(chan chan connChanItem, max_close_notify_chan_size)
+    obj.connCloseNotifyChan = make(chan uint32, max_close_notify_chan_size)
     return obj
 }
 
@@ -63,7 +63,7 @@ func NewEncryptTunAgent(peer *net.TCPConn, raddr string) (obj *EncryptTunPeer) {
     obj.addr, _ = net.ResolveTCPAddr("tcp", raddr)
     obj.mode = server_mode_agent
     obj.connChanMap = new(sync.Map)
-    obj.connCloseNotifyChan = make(chan chan connChanItem, max_close_notify_chan_size)
+    obj.connCloseNotifyChan = make(chan uint32, max_close_notify_chan_size)
     return obj
 }
 
@@ -127,13 +127,13 @@ func unpackData(reader io.Reader) (data []byte) {
 func unpackClose(reader io.Reader) {
 }
 
-func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem) {
+func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem, connId uint32) {
     for {
         select {
         case <-c:
             <-c  // drop
         default:
-            self.connCloseNotifyChan <- c
+            self.connCloseNotifyChan <- connId
             println("@@@@@@!!!!!@@@@@")
             return
         }
@@ -182,7 +182,7 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         connChan := v.(chan connChanItem)
         log.Printf("conn EOF, notify to close conn(%d) chan\n", connId)
         //safeClose(connChan)
-        self.notifyToCloseChan(connChan)
+        self.notifyToCloseChan(connChan, connId)
     }
 }
 
@@ -195,6 +195,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
     go func () {
         var ok bool
         var item connChanItem
+        FOR_END:
         for {
             item, ok = <-connChan
             if !ok {
@@ -219,7 +220,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                     self.peer.Write(protodata)
                     log.Printf("dial err, notify to close conn(%d) chan\n", connId)
                     //safeClose(connChan)
-                    self.notifyToCloseChan(connChan)
+                    self.notifyToCloseChan(connChan, connId)
                 } else {
                     go self.startConnHandler(conn, connId)
                 }
@@ -233,8 +234,8 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                 conn.Close()
                 log.Printf("peer op, notify to close conn(%d) chan\n", connId)
                 //safeClose(connChan)
-                self.notifyToCloseChan(connChan)
-                break
+                self.notifyToCloseChan(connChan, connId)
+                break FOR_END
             }
         }
         log.Printf("stop peer conn(%d) op handler\n", connId)
@@ -309,11 +310,15 @@ func (self *EncryptTunPeer) startPeerHandler() {
 
             select {
             case <-self.connCloseNotifyChan:
-                if connChan, ok := <-self.connCloseNotifyChan; ok {
-                    log.Println("close conn chan", connChan)
-                    close(connChan)
+                if connId, ok := <-self.connCloseNotifyChan; ok {
+                    if v, ok := self.connChanMap.Load(connId); ok {
+                        connChan := v.(chan connChanItem)
+                        log.Printf("close conn(%d) chan\n", connId)
+                        close(connChan)
+                    }
                 }
             default:
+                break
             }
 
             cmd, recvReader := unpackCmd(recvdata)
