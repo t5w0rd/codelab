@@ -160,6 +160,7 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         protodata := packClose(connId)
         self.peer.Write(protodata)
         connChan := v.(chan connChanItem)
+        println("conn EOF, closing connChan, left", len(connChan))
         close(connChan)
     }
 }
@@ -223,12 +224,15 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
     var connChan chan connChanItem
     if cmd == cmd_connect {
         connChan = self.goStartPeerConnOpHandler(nil, connId)
+    } else if v, ok := self.connChanMap.Load(connId); ok {
+        connChan = v.(chan connChanItem)
     } else {
-        if v, ok := self.connChanMap.Load(connId); ok {
-            connChan = v.(chan connChanItem)
-        }
+        log.Printf("!!closed connId(%d)\n", connId)
+        return
     }
+    println(connId, "@@connChan<-")
     connChan <- connChanItem{cmd, reader}
+    println(connId, "##connChan<-")
 }
 
 // 主连接处理循环
@@ -239,6 +243,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
     sldeleft := SLDE_HEADER_SIZE
     for {
         log.Printf("peer will read %d bytes\n", sldeleft)
+        println("@@@@@@@@@@@@@@@@")
         n, err := self.peer.Read(buf[:sldeleft])
         if err != nil {
             println(err.Error())
@@ -254,6 +259,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
             self.clear()
             break
         }
+        println("###############")
 
         sldeleft, err = slde.Write(buf[:n])
         if err != nil {
