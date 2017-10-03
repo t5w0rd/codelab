@@ -5,6 +5,7 @@ import (
     "os"
     "net"
     "time"
+    "log"
 )
 
 func test() {
@@ -34,6 +35,7 @@ func test() {
 }
 
 func main() {
+    log.SetFlags(log.Lshortfile | log.LstdFlags)
     args := os.Args
     if len(args) < 2 {
         return

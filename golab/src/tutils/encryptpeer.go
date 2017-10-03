@@ -262,14 +262,14 @@ func (self *EncryptTunPeer) startPeerHandler() {
         if sldeleft == 0 {
             // 一个协议包接收完成，根据connId将slde加入对应的待处理队列
             recvdata, err := slde.Decode()
-            //log.Println(recvdata)
-            slde = NewSlde()
             if err != nil {
                 println(err.Error())
                 // close all connection
                 self.clear()
                 break
             }
+            slde = NewSlde()
+            sldeleft = SLDE_HEADER_SIZE
             log.Println("slde recv complete")
 
             cmd, recvReader := unpackCmd(recvdata)
@@ -290,6 +290,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
     if self.mode == server_mode_proxy {
         self.lstn.Close()
     }
+    log.Println("stop peer handler")
 }
 
 func (self *EncryptTunPeer) startProxy() (err error) {
