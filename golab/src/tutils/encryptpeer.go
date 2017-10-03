@@ -65,6 +65,7 @@ func packConnect(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_connect)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
+    log.Println(ret)
     return ret
 }
 
@@ -77,6 +78,7 @@ func packData(connId uint32, data []byte) (ret []byte) {
     binary.Write(payload, binary.BigEndian, dataLen)
     binary.Write(payload, binary.BigEndian, data)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
+    log.Println(ret)
     return ret
 }
 
@@ -86,6 +88,7 @@ func packClose(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_close)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
+    log.Println(ret)
     return ret
 }
 
@@ -144,7 +147,6 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         // tell to (connect and )send data
         log.Println("op: senddata")
         protodata := packData(connId, buf[:n])
-        //log.Println(protodata)
         self.peer.Write(protodata)
     }
 
