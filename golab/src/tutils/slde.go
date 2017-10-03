@@ -59,7 +59,7 @@ func (self *Slde) Write(data []byte) (int, error) {
             return -1, errors.New("field length err")
         }
         self.length = int(length)
-        log.Println("decode slde.length:", self.length)
+        //log.Println("decode slde.length:", self.length)
     }
 
     left := self.length + 1 - self.writebuf.Len()
@@ -90,7 +90,7 @@ func (self *Slde) Decode() (ret []byte, err error) {
 func (self *Slde) Encode(data []byte) ([]byte, error) {
     data = XorEncrypt(data, 776103)
     self.length = len(data)
-    log.Println("encode slde.length:", self.length)
+    //log.Println("encode slde.length:", self.length)
     self.writebuf.Reset()
     binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
 

@@ -73,7 +73,7 @@ func packConnect(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_connect)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println("pack", ret)
+    //log.Println("pack", ret)
     return ret
 }
 
@@ -86,7 +86,7 @@ func packData(connId uint32, data []byte) (ret []byte) {
     binary.Write(payload, binary.BigEndian, dataLen)
     binary.Write(payload, binary.BigEndian, data)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println("pack", ret)
+    //log.Println("pack", ret)
     return ret
 }
 
@@ -96,7 +96,7 @@ func packClose(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_close)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println("pack", ret)
+    //log.Println("pack", ret)
     return ret
 }
 
@@ -179,7 +179,7 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         protodata := packClose(connId)
         self.peer.Write(protodata)
         connChan := v.(chan connChanItem)
-        //log.Printf("conn EOF, close conn(%d) chan\n", connId)
+        log.Printf("conn EOF, notify to close conn(%d) chan\n", connId)
         //safeClose(connChan)
         self.notifyToCloseChan(connChan)
     }
@@ -216,7 +216,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                     println(err.Error())
                     protodata := packClose(connId)
                     self.peer.Write(protodata)
-                    //log.Printf("dial err, close conn(%d) chan\n", connId)
+                    log.Printf("dial err, notify to close conn(%d) chan\n", connId)
                     //safeClose(connChan)
                     self.notifyToCloseChan(connChan)
                 } else {
@@ -230,7 +230,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                 unpackClose(item.reader)
                 self.connChanMap.Delete(connId)
                 conn.Close()
-                //log.Printf("peer op, close conn(%d) chan\n", connId)
+                log.Printf("peer op, notify to close conn(%d) chan\n", connId)
                 //safeClose(connChan)
                 self.notifyToCloseChan(connChan)
                 break
