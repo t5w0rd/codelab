@@ -38,12 +38,7 @@ type EncryptTunPeer struct {
     addr *net.TCPAddr
     mode byte
     connChanMap *sync.Map  // map[uint32] chan connChanItem
-}
-
-type EncryptTunConnection struct {
-    conn *net.TCPConn
-    peer *EncryptTunPeer
-    connId uint32
+    lstn *net.TCPListener
 }
 
 func NewEncryptTunProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
@@ -289,25 +284,29 @@ func (self *EncryptTunPeer) startPeerHandler() {
             }
         }
     }
+
+    if self.mode == server_mode_proxy {
+        self.lstn.Close()
+    }
 }
 
 func (self *EncryptTunPeer) startProxy() (err error) {
     log.Println("proxy is starting")
-    lstn, err := net.ListenTCP("tcp", self.addr)
+    self.lstn, err = net.ListenTCP("tcp", self.addr)
     if err != nil {
         println(err.Error())
         return err
     }
-    defer lstn.Close()
+    defer self.lstn.Close()
 
     go self.startPeerHandler()
 
     var connId uint32 = 0
     for {
-        conn, err := lstn.AcceptTCP()
+        conn, err := self.lstn.AcceptTCP()
         if err != nil {
             println(err.Error())
-            continue
+            break
         }
 
         connId += 1

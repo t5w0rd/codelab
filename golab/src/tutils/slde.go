@@ -55,6 +55,7 @@ func (self *Slde) Write(data []byte) (int, error) {
 
 func (self *Slde) Decode() ([]byte, error) {
     if self.length < 0 || self.writebuf.Len() != self.length + 1 {
+        println(self.length, self.writebuf.Len())
         return nil, errors.New("data format err")
     }
 
