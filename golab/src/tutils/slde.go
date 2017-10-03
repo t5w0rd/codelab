@@ -4,6 +4,7 @@ import (
     "encoding/binary"
     "bytes"
     "errors"
+    "math/rand"
 )
 
 const SLDE_STX byte = 2
@@ -14,6 +15,13 @@ const SLDE_HEADER_SIZE = SLDE_LENGTH_SIZE + 1
 type Slde struct {
     writebuf *bytes.Buffer
     length int
+}
+
+func xorencrypt(data []byte, seed int64) {
+    rnd := rand.New(rand.NewSource(seed))
+    for i := 0; i < len(data); i++ {
+        data[i] ^= byte(rnd.Intn(256))
+    }
 }
 
 func (self *Slde) Write(data []byte) (int, error) {
@@ -53,16 +61,19 @@ func (self *Slde) Write(data []byte) (int, error) {
     return 0, nil
 }
 
-func (self *Slde) Decode() ([]byte, error) {
+func (self *Slde) Decode() (ret []byte, err error) {
     if self.length < 0 || self.writebuf.Len() != self.length + 1 {
         println(self.length, self.writebuf.Len())
         return nil, errors.New("data format err")
     }
 
-    return self.writebuf.Bytes()[:self.length], nil
+    ret = self.writebuf.Bytes()[:self.length]
+    xorencrypt(ret, 776103)
+    return ret, nil
 }
 
 func (self *Slde) Encode(data []byte) ([]byte, error) {
+    xorencrypt(data, 776103)
     self.length = len(data)
     self.writebuf.Reset()
     binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
