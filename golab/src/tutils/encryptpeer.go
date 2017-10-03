@@ -235,6 +235,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
     slde := NewSlde()
     sldeleft := SLDE_HEADER_SIZE
     for {
+        log.Printf("peer will read %d bytes\n", sldeleft)
         n, err := self.peer.Read(buf[:sldeleft])
         if err != nil {
             println(err.Error())
