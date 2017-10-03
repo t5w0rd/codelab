@@ -134,6 +134,7 @@ func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem) {
             <-c  // drop
         default:
             self.connCloseNotifyChan <- c
+            println("@@@@@@!!!!!@@@@@")
             break
         }
     }
@@ -307,9 +308,11 @@ func (self *EncryptTunPeer) startPeerHandler() {
             log.Println("slde recv complete")
 
             select {
-            case connChan := <-self.connCloseNotifyChan:
-                log.Println("close conn chan", connChan)
-                close(connChan)
+            case <-self.connCloseNotifyChan:
+                if connChan, ok := <-self.connCloseNotifyChan; ok {
+                    log.Println("close conn chan", connChan)
+                    close(connChan)
+                }
             default:
             }
 
