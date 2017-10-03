@@ -11,8 +11,9 @@ import (
 
 const SLDE_STX byte = 2
 const SLDE_ETX byte = 3
+const SLDE_CUSTOM_SIZE int = 1  // TODO: add custom size
 const SLDE_LENGTH_SIZE int = 4
-const SLDE_HEADER_SIZE int = SLDE_LENGTH_SIZE + 1
+const SLDE_HEADER_SIZE int = SLDE_CUSTOM_SIZE + SLDE_LENGTH_SIZE + 1
 
 type Slde struct {
     writebuf *bytes.Buffer
@@ -48,6 +49,8 @@ func (self *Slde) Write(data []byte) (int, error) {
         }
 
         // TODO: add custom field
+        var stx2 byte
+        binary.Read(self.writebuf, binary.BigEndian, &stx2)
         //binary.Read(self.writebuf, binary.BigEndian, &self.rid)
         //log.Printf("decode slde.rid: %04X\n", self.rid)
 
@@ -97,6 +100,7 @@ func (self *Slde) Encode(data []byte) ([]byte, error) {
     //self.rid = rnd.Uint32()
     //log.Printf("encode slde.rid: %04X\n", self.rid)
     //binary.Write(self.writebuf, binary.BigEndian, self.rid)
+    binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
 
     binary.Write(self.writebuf, binary.BigEndian, int32(self.length))
     self.writebuf.Write(data)
