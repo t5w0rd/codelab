@@ -25,7 +25,8 @@ func test() {
     c := make(chan int, 5)
     //go sendchan(c)
     //time.Sleep(1e9)
-    close(c)
+    c <- 5
+    c <- 4
     select {
     case <-c:
         a := <-c

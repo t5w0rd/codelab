@@ -131,8 +131,8 @@ func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem, connId uint32
     EndFor:
     for {
         select {
-        case <-c:
-            if _, ok := <-c; !ok {
+        case _, ok := <-c:
+            if !ok {
                 break EndFor
             }
             // drop
@@ -315,9 +315,8 @@ func (self *EncryptTunPeer) startPeerHandler() {
             log.Println("slde recv complete")
 
             select {
-            case <-self.connCloseNotifyChan:
-                println("@@11")
-                if connId, ok := <-self.connCloseNotifyChan; ok {
+            case connId, ok := <-self.connCloseNotifyChan:
+                if ok {
                     println("@@22")
                     if v, ok := self.connChanMap.Load(connId); ok {
                         println("@@33")
