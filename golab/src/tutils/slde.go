@@ -49,7 +49,7 @@ func (self *Slde) Write(data []byte) (int, error) {
 
         // TODO: add custom field
         binary.Read(self.writebuf, binary.BigEndian, &self.rid)
-        log.Printf("decode slde.rid: 0x04X\n", self.rid)
+        log.Printf("decode slde.rid: %04X\n", self.rid)
 
         var length int32
         binary.Read(self.writebuf, binary.BigEndian, &length)
@@ -96,7 +96,7 @@ func (self *Slde) Encode(data []byte) ([]byte, error) {
     // TODO: add custom fields
     rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
     self.rid = rnd.Uint32()
-    log.Printf("encode slde.rid: 0x04X\n", self.rid)
+    log.Printf("encode slde.rid: %04X\n", self.rid)
     binary.Write(self.writebuf, binary.BigEndian, self.rid)
 
     self.writebuf.Write(data)
