@@ -6,7 +6,7 @@ import (
     "errors"
     "math/rand"
     "log"
-    "time"
+    //"time"
 )
 
 const SLDE_STX byte = 2
