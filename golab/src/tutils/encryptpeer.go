@@ -307,9 +307,8 @@ func (self *EncryptTunPeer) startPeerHandler() {
             log.Println("slde recv complete")
 
             select {
-            case <-self.connCloseNotifyChan:
-                connChan := <-self.connCloseNotifyChan
-                log.Println("close conn chan")
+            case connChan := <-self.connCloseNotifyChan:
+                log.Println("close conn chan", connChan)
                 close(connChan)
             default:
             }
