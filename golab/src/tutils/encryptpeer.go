@@ -125,7 +125,9 @@ func unpackClose(reader io.Reader) {
 func (self *EncryptTunPeer) clear() {
     log.Println("clear")
     self.connChanMap.Range(func (k, v interface{}) bool {
+        connId := k.(uint32)
         connChan := v.(chan connChanItem)
+        log.Printf("clear, close conn(%d) chan\n", connId)
         close(connChan)
         return true
     })
@@ -160,7 +162,7 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         protodata := packClose(connId)
         self.peer.Write(protodata)
         connChan := v.(chan connChanItem)
-        println("conn EOF, closing connChan, left", len(connChan))
+        log.Printf("conn EOF, close conn(%d) chan\n", connId)
         close(connChan)
     }
 }
@@ -196,6 +198,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                     println(err.Error())
                     protodata := packClose(connId)
                     self.peer.Write(protodata)
+                    log.Printf("dial err, close conn(%d) chan\n", connId)
                     close(connChan)
                 } else {
                     go self.startConnHandler(conn, connId)
@@ -208,6 +211,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                 unpackClose(item.reader)
                 self.connChanMap.Delete(connId)
                 conn.Close()
+                log.Printf("peer op, close conn(%d) chan\n", connId)
                 close(connChan)
                 break
             }
