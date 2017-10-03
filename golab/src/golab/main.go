@@ -4,34 +4,27 @@ import (
     "tutils"
     "os"
     "net"
-    "time"
     "log"
+    "fmt"
 )
 
-func test() {
-    addr, _ := net.ResolveTCPAddr("tcp", "localhost:2888")
-    conn, _ := net.DialTCP("tcp", nil, addr)
-    go func() {
-        buf := make([]byte, 4096)
-        for {
-            n, err := conn.Read(buf)
-            if err != nil {
-                println(err.Error())
-                break
-            }
-            if n <= 0 {
-                println("remote closed")
-            }
+func printb(data []byte) {
+    for _, x := range data {
+        fmt.Printf("%02x ", x)
+    }
+    println()
+}
 
-            println(buf)
-        }
-        conn.Close()
-    }()
-    v := make(chan int)
-    close(v)
-    time.Sleep(5 * 1e9)
-    conn.Close()
-    time.Sleep(5 * 1e9)
+func test() {
+
+    s := "abcd"
+    b := []byte(s)
+    println("s", s)
+    printb(b)
+    tutils.XorEncrypt(b, 1234)
+    printb(b)
+    tutils.XorEncrypt(b, 1234)
+    printb(b)
 }
 
 func main() {
