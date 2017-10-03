@@ -16,15 +16,19 @@ func printb(data []byte) {
 }
 
 func test() {
-
     s := "abcd"
-    b := []byte(s)
-    println("s", s)
-    printb(b)
-    tutils.XorEncrypt(b, 1234)
-    printb(b)
-    tutils.XorEncrypt(b, 1234)
-    printb(b)
+
+    data := tutils.NewSldeWithData([]byte(s)).Bytes()
+    printb(data)
+    slde := tutils.NewSlde()
+    left := tutils.SLDE_HEADER_SIZE
+    nleft, _ := slde.Write(data[:left])
+    println("nleft", nleft, left, len(data), len(data[left:]))
+    nleft, _ = slde.Write(data[left:left+nleft])
+    ssb, _ := slde.Decode()
+    printb(ssb)
+    ss := string(ssb)
+    println(ss)
 }
 
 func main() {

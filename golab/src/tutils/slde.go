@@ -36,12 +36,12 @@ func XorEncrypt(data []byte, seed int64) (ret []byte) {
 func (self *Slde) Write(data []byte) (int, error) {
     self.writebuf.Write(data)
 
-    if self.writebuf.Len() < SLDE_HEADER_SIZE {
-        // header not enough
-        return SLDE_HEADER_SIZE - self.writebuf.Len(), nil
-    }
-
     if self.length < 0 {
+        if self.writebuf.Len() < SLDE_HEADER_SIZE {
+            // header not enough
+            return SLDE_HEADER_SIZE - self.writebuf.Len(), nil
+        }
+
         // header enough
         var stx byte
         binary.Read(self.writebuf, binary.BigEndian, &stx)
@@ -50,13 +50,8 @@ func (self *Slde) Write(data []byte) (int, error) {
         }
 
         // TODO: add custom field
-        //var stx2 byte
-        //binary.Read(self.writebuf, binary.BigEndian, &stx2)
-        var rid uint32
-        println("@@", self.writebuf.Len())
-        binary.Read(self.writebuf, binary.BigEndian, &rid)
-        log.Printf("decode slde.rid: %04X\n", rid)
-        println("@@2", self.writebuf.Len())
+        binary.Read(self.writebuf, binary.BigEndian, &self.rid)
+        log.Printf("decode slde.rid: %04X\n", self.rid)
 
         var length int32
         binary.Read(self.writebuf, binary.BigEndian, &length)
@@ -102,11 +97,8 @@ func (self *Slde) Encode(data []byte) ([]byte, error) {
     // TODO: add custom fields
     rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
     self.rid = rnd.Uint32()
-    var rid uint32
-    rid = 0x1234
-    log.Printf("encode slde.rid: %04X\n", rid)
-    binary.Write(self.writebuf, binary.BigEndian, rid)
-    //binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
+    log.Printf("encode slde.rid: %04X\n", self.rid)
+    binary.Write(self.writebuf, binary.BigEndian, self.rid)
 
     binary.Write(self.writebuf, binary.BigEndian, int32(self.length))
     self.writebuf.Write(data)
