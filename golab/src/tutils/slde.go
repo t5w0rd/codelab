@@ -17,7 +17,6 @@ type Slde struct {
 }
 
 func (self *Slde) Write(data []byte) (int, error) {
-    println("slde:write", len(data))
     self.writebuf.Write(data)
 
     if self.writebuf.Len() < SLDE_HEADER_SIZE {

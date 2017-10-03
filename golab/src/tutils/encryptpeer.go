@@ -251,7 +251,6 @@ func (self *EncryptTunPeer) startPeerHandler() {
             break
         }
 
-        println("write n:", n, len(buf[:n]))
         sldeleft, err = slde.Write(buf[:n])
         if err != nil {
             println(err.Error())
