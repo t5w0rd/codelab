@@ -65,7 +65,7 @@ func packConnect(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_connect)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println(ret)
+    log.Println("pack", ret)
     return ret
 }
 
@@ -78,7 +78,7 @@ func packData(connId uint32, data []byte) (ret []byte) {
     binary.Write(payload, binary.BigEndian, dataLen)
     binary.Write(payload, binary.BigEndian, data)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println(ret)
+    log.Println("pack", ret)
     return ret
 }
 
@@ -88,7 +88,7 @@ func packClose(connId uint32) (ret []byte) {
     binary.Write(payload, binary.BigEndian, cmd_close)
     binary.Write(payload, binary.BigEndian, connId)
     ret = NewSldeWithData(payload.Bytes()).Bytes()
-    log.Println(ret)
+    log.Println("pack", ret)
     return ret
 }
 

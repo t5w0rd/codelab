@@ -6,16 +6,20 @@ import (
     "errors"
     "math/rand"
     "log"
+    "time"
 )
 
 const SLDE_STX byte = 2
 const SLDE_ETX byte = 3
 const SLDE_LENGTH_SIZE int = 4
-const SLDE_HEADER_SIZE int = SLDE_LENGTH_SIZE + 1
+const SLDE_HEADER_SIZE int = SLDE_LENGTH_SIZE + 1 + 4
 
 type Slde struct {
     writebuf *bytes.Buffer
     length int
+
+    // custom fields
+    rid uint32
 }
 
 func XorEncrypt(data []byte, seed int64) (ret []byte) {
@@ -42,6 +46,11 @@ func (self *Slde) Write(data []byte) (int, error) {
         if stx != SLDE_STX {
             return -1, errors.New("field stx err")
         }
+
+        // TODO: add custom field
+        binary.Read(self.writebuf, binary.BigEndian, &self.rid)
+        log.Printf("decode slde.rid: 0x04X\n", self.rid)
+
         var length int32
         binary.Read(self.writebuf, binary.BigEndian, &length)
         if length < 0 {
@@ -83,6 +92,13 @@ func (self *Slde) Encode(data []byte) ([]byte, error) {
     self.writebuf.Reset()
     binary.Write(self.writebuf, binary.BigEndian, SLDE_STX)
     binary.Write(self.writebuf, binary.BigEndian, int32(self.length))
+
+    // TODO: add custom fields
+    rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+    self.rid = rnd.Uint32()
+    log.Printf("encode slde.rid: 0x04X\n", self.rid)
+    binary.Write(self.writebuf, binary.BigEndian, self.rid)
+
     self.writebuf.Write(data)
     binary.Write(self.writebuf, binary.BigEndian, SLDE_ETX)
     return self.writebuf.Bytes(), nil
