@@ -316,14 +316,20 @@ func (self *EncryptTunPeer) startPeerHandler() {
 
             select {
             case <-self.connCloseNotifyChan:
+                println("@@11")
                 if connId, ok := <-self.connCloseNotifyChan; ok {
+                    println("@@22")
                     if v, ok := self.connChanMap.Load(connId); ok {
+                        println("@@33")
                         connChan := v.(chan connChanItem)
                         log.Printf("close conn(%d) chan\n", connId)
                         self.connChanMap.Delete(connId)
                         close(connChan)
+                        println("@@44")
                     }
+                    println("@@55")
                 }
+                println("@@66")
             default:
                 break
             }
