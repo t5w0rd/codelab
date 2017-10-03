@@ -316,6 +316,8 @@ func (self *EncryptTunPeer) startProxy() (err error) {
         self.peer.Write(data)
         go self.startConnHandler(conn, connId)
     }
+
+    return err
 }
 
 func (self *EncryptTunPeer) startAgent() (err error) {
