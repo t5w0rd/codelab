@@ -235,7 +235,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
     slde := NewSlde()
     sldeleft := SLDE_HEADER_SIZE
     for {
-        n, err := self.peer.Read(buf)
+        n, err := self.peer.Read(buf[:sldeleft])
         if err != nil {
             println(err.Error())
             // close all connection
