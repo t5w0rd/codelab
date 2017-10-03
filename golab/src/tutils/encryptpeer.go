@@ -18,13 +18,16 @@ conn /                       \ conn
 ===================================
 */
 
-const cmd_connect uint16 = 0
-const cmd_data uint16 = 1
-const cmd_close uint16 = 2
+const (
+    cmd_connect uint16 = 0
+    cmd_data uint16 = 1
+    cmd_close uint16 = 2
 
-const server_mode_proxy = 0
-const server_mode_agent = 1
+    server_mode_proxy = 0
+    server_mode_agent = 1
 
+    max_tcp_read = 0xffff
+)
 
 
 type connChanItem struct {
@@ -131,7 +134,7 @@ func (self *EncryptTunPeer) clear() {
 // 连接处理循环
 func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
     log.Printf("start conn(%d) handler\n", connId)
-    buf := make([]byte, 0xffff)
+    buf := make([]byte, max_tcp_read)
     for {
         n, err := conn.Read(buf)
         if err != nil {
@@ -231,7 +234,7 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
 // 主连接处理循环
 func (self *EncryptTunPeer) startPeerHandler() {
     log.Println("start peer handler")
-    buf := make([]byte, 0xffff)
+    buf := make([]byte, max_tcp_read)
     slde := NewSlde()
     sldeleft := SLDE_HEADER_SIZE
     for {
@@ -285,6 +288,8 @@ func (self *EncryptTunPeer) startPeerHandler() {
                 log.Println("dispatch cmd: close")
                 self.dispatchPeerConnOp(cmd, recvReader)
             }
+        } else if sldeleft > max_tcp_read {
+            sldeleft = max_tcp_read
         }
     }
 
