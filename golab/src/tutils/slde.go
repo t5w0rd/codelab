@@ -12,7 +12,7 @@ import (
 const SLDE_STX byte = 2
 const SLDE_ETX byte = 3
 const SLDE_LENGTH_SIZE int = 4
-const SLDE_HEADER_SIZE int = SLDE_LENGTH_SIZE + 1 + 4
+const SLDE_HEADER_SIZE int = SLDE_LENGTH_SIZE + 1
 
 type Slde struct {
     writebuf *bytes.Buffer
