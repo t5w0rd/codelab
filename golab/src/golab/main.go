@@ -23,11 +23,12 @@ func sendchan(c chan int) {
 
 func test() {
     c := make(chan int, 5)
-    go sendchan(c)
+    //go sendchan(c)
     //time.Sleep(1e9)
-    a := 5
-    switch a {
-    case 5:
+    close(c)
+    select {
+    case <-c:
+        a := <-c
         println(a)
     default:
         println("def")

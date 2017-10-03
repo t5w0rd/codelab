@@ -128,15 +128,19 @@ func unpackClose(reader io.Reader) {
 }
 
 func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem, connId uint32) {
+    EndFor:
     for {
         select {
         case <-c:
+            if _, ok := <-c; !ok {
+                break EndFor
+            }
+            // drop
             println("drop")
-            <-c  // drop
         default:
             self.connCloseNotifyChan <- connId
             println("@@@@@@!!!!!@@@@@")
-            return
+            break EndFor
         }
     }
 }
