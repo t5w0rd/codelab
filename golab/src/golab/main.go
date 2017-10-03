@@ -16,19 +16,12 @@ func printb(data []byte) {
 }
 
 func test() {
-    s := "abcd"
-
-    data := tutils.NewSldeWithData([]byte(s)).Bytes()
-    printb(data)
-    slde := tutils.NewSlde()
-    left := tutils.SLDE_HEADER_SIZE
-    nleft, _ := slde.Write(data[:left])
-    println("nleft", nleft, left, len(data), len(data[left:]))
-    nleft, _ = slde.Write(data[left:left+nleft])
-    ssb, _ := slde.Decode()
-    printb(ssb)
-    ss := string(ssb)
-    println(ss)
+    c := make(chan int, 10)
+    c <- 1
+    c <- 2
+    <-c
+    a := <- c
+    println(a)
 }
 
 func main() {

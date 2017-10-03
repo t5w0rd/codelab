@@ -26,7 +26,9 @@ const (
     server_mode_proxy = 0
     server_mode_agent = 1
 
-    max_tcp_read = 0xffff
+    max_tcp_read               = 0xffff
+    max_peer_conn_op_chan_size = 10
+    max_close_notify_chan_size = 1024
 )
 
 
@@ -41,6 +43,7 @@ type EncryptTunPeer struct {
     addr *net.TCPAddr
     mode byte
     connChanMap *sync.Map  // map[uint32] chan connChanItem
+    connCloseNotifyChan chan chan connChanItem
     lstn *net.TCPListener
 }
 
@@ -50,6 +53,7 @@ func NewEncryptTunProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
     obj.addr, _ = net.ResolveTCPAddr("tcp", laddr)
     obj.mode = server_mode_proxy
     obj.connChanMap = new(sync.Map)
+    obj.connCloseNotifyChan = make(chan chan connChanItem, max_close_notify_chan_size)
     return obj
 }
 
@@ -59,6 +63,7 @@ func NewEncryptTunAgent(peer *net.TCPConn, raddr string) (obj *EncryptTunPeer) {
     obj.addr, _ = net.ResolveTCPAddr("tcp", raddr)
     obj.mode = server_mode_agent
     obj.connChanMap = new(sync.Map)
+    obj.connCloseNotifyChan = make(chan chan connChanItem, max_close_notify_chan_size)
     return obj
 }
 
@@ -122,6 +127,18 @@ func unpackData(reader io.Reader) (data []byte) {
 func unpackClose(reader io.Reader) {
 }
 
+func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem) {
+    for {
+        select {
+        case <-c:
+            <-c  // drop
+        default:
+            self.connCloseNotifyChan <- c
+            break
+        }
+    }
+}
+
 func (self *EncryptTunPeer) clear() {
     log.Println("clear")
     self.connChanMap.Range(func (k, v interface{}) bool {
@@ -162,15 +179,16 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
         protodata := packClose(connId)
         self.peer.Write(protodata)
         connChan := v.(chan connChanItem)
-        log.Printf("conn EOF, close conn(%d) chan\n", connId)
-        close(connChan)
+        //log.Printf("conn EOF, close conn(%d) chan\n", connId)
+        //safeClose(connChan)
+        self.notifyToCloseChan(connChan)
     }
 }
 
 // 处理远端 peer 发送过来的请求
 func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId uint32) (connChan chan connChanItem) {
     log.Printf("start peer conn(%d) op handler\n", connId)
-    connChan = make(chan connChanItem)
+    connChan = make(chan connChanItem, max_peer_conn_op_chan_size)
     self.connChanMap.Store(connId, connChan)
 
     go func () {
@@ -198,8 +216,9 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                     println(err.Error())
                     protodata := packClose(connId)
                     self.peer.Write(protodata)
-                    log.Printf("dial err, close conn(%d) chan\n", connId)
-                    close(connChan)
+                    //log.Printf("dial err, close conn(%d) chan\n", connId)
+                    //safeClose(connChan)
+                    self.notifyToCloseChan(connChan)
                 } else {
                     go self.startConnHandler(conn, connId)
                 }
@@ -211,8 +230,9 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
                 unpackClose(item.reader)
                 self.connChanMap.Delete(connId)
                 conn.Close()
-                log.Printf("peer op, close conn(%d) chan\n", connId)
-                close(connChan)
+                //log.Printf("peer op, close conn(%d) chan\n", connId)
+                //safeClose(connChan)
+                self.notifyToCloseChan(connChan)
                 break
             }
         }
@@ -234,9 +254,9 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
         log.Printf("!!closed connId(%d)\n", connId)
         return
     }
-    println(connId, "@@connChan<-")
+    println(connId, "@@send conn chan")
     connChan <- connChanItem{cmd, reader}
-    println(connId, "##connChan<-")
+    println(connId, "##send conn chan<-")
 }
 
 // 主连接处理循环
@@ -285,6 +305,13 @@ func (self *EncryptTunPeer) startPeerHandler() {
             slde = NewSlde()
             sldeleft = SLDE_HEADER_SIZE
             log.Println("slde recv complete")
+
+            select {
+            case <- self.connCloseNotifyChan:
+                connChan := <-self.connCloseNotifyChan
+                close(connChan)
+            default:
+            }
 
             cmd, recvReader := unpackCmd(recvdata)
             switch cmd {
