@@ -131,6 +131,7 @@ func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem, connId uint32
     for {
         select {
         case <-c:
+            println("drop")
             <-c  // drop
         default:
             self.connCloseNotifyChan <- connId
