@@ -135,7 +135,7 @@ func (self *EncryptTunPeer) notifyToCloseChan(c chan connChanItem) {
         default:
             self.connCloseNotifyChan <- c
             println("@@@@@@!!!!!@@@@@")
-            break
+            return
         }
     }
 }
