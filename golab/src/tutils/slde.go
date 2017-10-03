@@ -6,15 +6,21 @@ import (
     "errors"
     "math/rand"
     "log"
-    //"time"
     "time"
+    "compress/zlib"
+    "io/ioutil"
 )
 
-const SLDE_STX byte = 2
-const SLDE_ETX byte = 3
-const SLDE_CUSTOM_SIZE int = 4  // TODO: add custom size
-const SLDE_LENGTH_SIZE int = 4
-const SLDE_HEADER_SIZE int = SLDE_CUSTOM_SIZE + SLDE_LENGTH_SIZE + 1
+const(
+    SLDE_STX byte = 2
+    SLDE_ETX byte = 3
+    SLDE_CUSTOM_SIZE int = 4  // TODO: add custom size
+    SLDE_LENGTH_SIZE int = 4
+    SLDE_HEADER_SIZE int = SLDE_CUSTOM_SIZE + SLDE_LENGTH_SIZE + 1
+
+    xor_encrypt_seed int64 = 776103
+)
+
 
 type Slde struct {
     writebuf *bytes.Buffer
@@ -24,13 +30,34 @@ type Slde struct {
     rid uint32
 }
 
-func XorEncrypt(data []byte, seed int64) (ret []byte) {
+func xorEncrypt(data []byte, seed int64) (ret []byte) {
     ret = make([]byte, len(data))
     rnd := rand.New(rand.NewSource(seed))
     for i, v := range data {
         ret[i] = v ^ byte(rnd.Intn(256))
     }
     return ret
+}
+
+func encrypt(data []byte) (ret []byte) {
+    var b bytes.Buffer
+    w := zlib.NewWriter(&b)
+    w.Write(data)
+    w.Close()
+    ret = xorEncrypt(b.Bytes(), xor_encrypt_seed)
+    return ret
+}
+
+func decrypt(data []byte) (ret []byte, err error) {
+    data = xorEncrypt(data, xor_encrypt_seed)
+    b := bytes.NewBuffer(data)
+    r, err := zlib.NewReader(b)
+    if err != nil {
+        return nil, err
+    }
+    ret, err = ioutil.ReadAll(r)
+    r.Close()
+    return ret, nil
 }
 
 func (self *Slde) Write(data []byte) (int, error) {
@@ -83,12 +110,12 @@ func (self *Slde) Decode() (ret []byte, err error) {
     }
 
     ret = self.writebuf.Bytes()[:self.length]
-    ret = XorEncrypt(ret, 776103)
-    return ret, nil
+    ret, err = decrypt(ret)
+    return ret, err
 }
 
 func (self *Slde) Encode(data []byte) ([]byte, error) {
-    data = XorEncrypt(data, 776103)
+    data = encrypt(data)
     self.length = len(data)
     //log.Println("encode slde.length:", self.length)
     self.writebuf.Reset()
