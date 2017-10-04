@@ -43,7 +43,7 @@ type EncryptTunPeer struct {
 	mode                byte
 	connChanMap         *sync.Map // map[uint32] chan connChanItem
 	connCloseNotifyChan chan uint32
-	wg                  *sync.WaitGroup
+	wg                  sync.WaitGroup
 	lstn                *net.TCPListener
 }
 
