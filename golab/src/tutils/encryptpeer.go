@@ -47,9 +47,10 @@ type EncryptTunPeer struct {
 	lstn                *net.TCPListener
 }
 
-func NewEncryptTunProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
+func NewEncryptConnProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
 	obj = new(EncryptTunPeer)
 	obj.peer = peer
+	log.Printf("resolve addr(%s)", laddr)
 	obj.addr, _ = net.ResolveTCPAddr("tcp", laddr)
 	obj.mode = server_mode_proxy
 	obj.connChanMap = new(sync.Map)
@@ -57,9 +58,10 @@ func NewEncryptTunProxy(peer *net.TCPConn, laddr string) (obj *EncryptTunPeer) {
 	return obj
 }
 
-func NewEncryptTunAgent(peer *net.TCPConn, raddr string) (obj *EncryptTunPeer) {
+func NewEncryptConnAgent(peer *net.TCPConn, raddr string) (obj *EncryptTunPeer) {
 	obj = new(EncryptTunPeer)
 	obj.peer = peer
+	log.Printf("resolve addr(%s)", raddr)
 	obj.addr, _ = net.ResolveTCPAddr("tcp", raddr)
 	obj.mode = server_mode_agent
 	obj.connChanMap = new(sync.Map)

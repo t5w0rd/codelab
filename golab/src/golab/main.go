@@ -57,7 +57,7 @@ func main() {
 		clt := tutils.NewTcpClient()
 		clt.Addr = os.Args[2]
 		clt.OnDialCallback = func(self *tutils.TcpClient, conn *net.TCPConn) (ok bool, readSize int, connExt interface{}) {
-			proxy := tutils.NewEncryptTunProxy(conn, os.Args[3])
+			proxy := tutils.NewEncryptConnProxy(conn, os.Args[3])
 			proxy.Start()
 			return false, 0, proxy
 		}
@@ -67,7 +67,7 @@ func main() {
 		svr := tutils.NewTcpServer()
 		svr.Addr = os.Args[2]
 		svr.OnAcceptConnCallback = func(self *tutils.TcpServer, conn *net.TCPConn, connId uint32) (ok bool, readSize int, connExt interface{}) {
-			agent := tutils.NewEncryptTunAgent(conn, os.Args[3])
+			agent := tutils.NewEncryptConnAgent(conn, os.Args[3])
 			go agent.Start()
 			return true, 0, agent
 		}

@@ -89,6 +89,7 @@ func (self *TcpServer) Start() (err error) {
 	}()
 
 	log.Println("start server")
+	log.Printf("resolve addr(%s)", self.Addr)
 	addr, err := net.ResolveTCPAddr("tcp", self.Addr)
 	if err != nil {
 		log.Println(err.Error())
@@ -201,6 +202,7 @@ func (self *TcpClient) connReadHandler(conn *TCPConnEx) {
 
 func (self *TcpClient) Start() (err error) {
 	log.Println("start client")
+	log.Printf("resolve addr(%s)", self.Addr)
 	addr, err := net.ResolveTCPAddr("tcp", self.Addr)
 	if err != nil {
 		log.Println(err.Error())
