@@ -21,10 +21,18 @@ func sendchan(c chan int) {
 	}
 }
 
+func onHandle(self *tutils.TcpServer, conn *tutils.TCPConnEx, connId uint32, data []byte) (ok bool) {
+	println(string(data))
+	return true
+}
+
+func onDial(self *tutils.TcpClient, conn *net.TCPConn) (ok bool, readSize int, connExt interface{}) {
+	println("conn succ")
+	return true, self.ReadBufSize, nil
+}
+
 func test() {
-	s := "localhost:5000"
-	addr, _ := net.ResolveTCPAddr("tcp", s)
-	println(addr.String())
+
 }
 
 func main() {
@@ -85,5 +93,23 @@ func main() {
 
 	case "test":
 		test()
+
+	case "proxyx":
+		clt := tutils.NewTcpClient()
+		clt.Addr = os.Args[2]
+		clt.OnDialCallback = func(self *tutils.TcpClient, conn *net.TCPConn) (ok bool, readSize int, connExt interface{}) {
+			proxy := tutils.NewEncryptTunProxy(conn, os.Args[3])
+			proxy.Start()
+			return false, 0, proxy
+		}
+
+	case "agentx":
+		svr := tutils.NewTcpServer()
+		svr.Addr = os.Args[2]
+		svr.OnAcceptConnCallback = func(self *tutils.TcpServer, conn *net.TCPConn, connId uint32) (ok bool, readSize int, connExt interface{}) {
+			agent := tutils.NewEncryptTunAgent(conn, os.Args[3])
+			go agent.Start()
+			return true, 0, agent
+		}
 	}
 }

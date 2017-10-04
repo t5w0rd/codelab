@@ -173,7 +173,7 @@ _for:
 
 	log.Println("wait for stopping all of conn handler and peer conn op hander")
 	self.wg.Wait()
-    log.Println("all of conn handler and peer conn op hander stopped")
+	log.Println("all of conn handler and peer conn op hander stopped")
 
 	if self.mode == server_mode_proxy {
 		log.Printf("stop listener(%s)\n", self.addr.String())
@@ -183,7 +183,7 @@ _for:
 
 // 连接处理循环
 func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
-    self.wg.Add(1)
+	self.wg.Add(1)
 	log.Printf("start conn(%d) handler\n", connId)
 	buf := make([]byte, max_tcp_read)
 	for {
@@ -225,7 +225,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
 	self.connChanMap.Store(connId, connChan)
 
 	go func() {
-        self.wg.Add(1)
+		self.wg.Add(1)
 
 		var ok bool
 		var item connChanItem
@@ -277,7 +277,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
 			}
 		}
 		log.Printf("stop peer conn(%d) op handler\n", connId)
-        self.wg.Done()
+		self.wg.Done()
 	}()
 
 	return connChan
