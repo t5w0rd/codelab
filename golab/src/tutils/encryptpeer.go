@@ -136,11 +136,11 @@ _for:
 				break _for
 			}
 			// drop
-			log.Printf("drop conn(%d) chan datas\f", connId)
+			log.Printf("drop conn(%d) chan datas\n", connId)
 		default:
-			log.Printf("send notify chan, conn(%d)\f", connId)
+			log.Printf("@@ send notify chan, conn(%d)\n", connId)
 			self.connCloseNotifyChan <- connId
-			log.Printf("sent notify chan, conn(%d), finished\f", connId)
+			log.Printf("## sent notify chan, conn(%d), finished\n", connId)
 			break _for
 		}
 	}
@@ -295,9 +295,9 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
 		log.Printf("invalid dispatch, connId(%d)\n", connId)
 		return
 	}
-	log.Printf("serialize op conn(%d), send conn chan\n", connId)
+	log.Printf("@@ serialize op conn(%d), send conn chan\n", connId)
 	connChan <- connChanItem{cmd, reader}
-	log.Printf("serialize op conn(%d), sent conn chan, finished\n", connId)
+	log.Printf("## serialize op conn(%d), sent conn chan, finished\n", connId)
 }
 
 // 主连接处理循环
@@ -308,7 +308,9 @@ func (self *EncryptTunPeer) startPeerHandler() {
 	sldeleft := SLDE_HEADER_SIZE
 	for {
 		//log.Printf("peer will read %d bytes\n", sldeleft)
+		log.Println("@@@@@ peer read")
 		n, err := self.peer.Read(buf[:sldeleft])
+		log.Println("##### peer read finished")
 		if err != nil {
 			log.Println(err.Error())
 			// close all connection
