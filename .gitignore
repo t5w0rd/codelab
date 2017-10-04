@@ -5,3 +5,5 @@
 pyinstaller
 golab/pkg
 golab/bin
+golab/src/golab/golab
+*.log
