@@ -102,6 +102,7 @@ func main() {
 			proxy.Start()
 			return false, 0, proxy
 		}
+		clt.Start()
 
 	case "agentx":
 		svr := tutils.NewTcpServer()
@@ -111,5 +112,6 @@ func main() {
 			go agent.Start()
 			return true, 0, agent
 		}
+		svr.Start()
 	}
 }
