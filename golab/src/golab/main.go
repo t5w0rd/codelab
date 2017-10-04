@@ -32,7 +32,10 @@ func onDial(self *tutils.TcpClient, conn *net.TCPConn) (ok bool, readSize int, c
 }
 
 func test() {
-
+	log.Printf("test log.printf")
+	log.Printf("test log.printf\n")
+	log.Printf("test log.printf")
+	log.Printf("test log.printf\n")
 }
 
 func main() {
@@ -43,50 +46,6 @@ func main() {
 	}
 	appType := args[1]
 	switch appType {
-	case "proxy":
-		peerAddrStr := args[2]
-		peerAddr, err := net.ResolveTCPAddr("tcp", peerAddrStr)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-
-		peer, err := net.DialTCP("tcp", nil, peerAddr)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-		defer peer.Close()
-
-		addrStr := args[3]
-		tutils.NewEncryptTunProxy(peer, addrStr).Start()
-
-	case "agent":
-		peerAddrStr := args[2]
-		peerAddr, err := net.ResolveTCPAddr("tcp", peerAddrStr)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-
-		println("listen on: " + peerAddrStr)
-		lstn, err := net.ListenTCP("tcp", peerAddr)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-
-		peer, err := lstn.AcceptTCP()
-		if err != nil {
-			println(err.Error())
-			return
-		}
-		defer peer.Close()
-		println("accept")
-
-		addrStr := args[3]
-		tutils.NewEncryptTunAgent(peer, addrStr).Start()
-
 	case "messager":
 		addr := args[2]
 		tutils.StartMessagerServer(addr)
@@ -94,7 +53,7 @@ func main() {
 	case "test":
 		test()
 
-	case "proxyx":
+	case "proxy":
 		clt := tutils.NewTcpClient()
 		clt.Addr = os.Args[2]
 		clt.OnDialCallback = func(self *tutils.TcpClient, conn *net.TCPConn) (ok bool, readSize int, connExt interface{}) {
@@ -104,7 +63,7 @@ func main() {
 		}
 		clt.Start()
 
-	case "agentx":
+	case "agent":
 		svr := tutils.NewTcpServer()
 		svr.Addr = os.Args[2]
 		svr.OnAcceptConnCallback = func(self *tutils.TcpServer, conn *net.TCPConn, connId uint32) (ok bool, readSize int, connExt interface{}) {

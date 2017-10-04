@@ -57,14 +57,18 @@ func (self *TcpServer) connReadHandler(conn *TCPConnEx, connId uint32) {
 		}
 		self.ConnMap.Delete(connId)
 		conn.Close()
+		log.Printf("close conn(%d)", connId)
+		log.Printf("stop conn(%d) handler", connId)
 		self.connWg.Done()
 	}()
+
+	log.Printf("start conn(%d) handler", connId)
 
 	buf := make([]byte, self.ReadBufSize)
 	for {
 		n, err := conn.Read(buf[:conn.ReadSize])
 		if err != nil {
-			log.Printf("conn(%d), %s\n", connId, err.Error())
+			log.Printf("conn(%d), %s", connId, err.Error())
 			break
 		}
 
@@ -76,18 +80,28 @@ func (self *TcpServer) connReadHandler(conn *TCPConnEx, connId uint32) {
 }
 
 func (self *TcpServer) Start() (err error) {
+	defer func() {
+		if self.lstn != nil {
+			self.lstn.Close()
+			log.Println("close listener")
+		}
+		log.Println("stop server")
+	}()
+
+	log.Println("start server")
 	addr, err := net.ResolveTCPAddr("tcp", self.Addr)
 	if err != nil {
 		log.Println(err.Error())
 		return err
 	}
 
+	log.Printf("listen on %s", addr.String())
 	self.lstn, err = net.ListenTCP("tcp", addr)
 	if err != nil {
 		log.Println(err.Error())
 		return err
 	}
-	defer self.lstn.Close()
+
 	if self.OnListenSuccCallback != nil {
 		if err = self.OnListenSuccCallback(self); err != nil {
 			return err
@@ -101,6 +115,7 @@ func (self *TcpServer) Start() (err error) {
 			log.Println(err.Error())
 			return err
 		}
+		log.Printf("new conn(%d) from %s", connId, conn.RemoteAddr().String())
 
 		connId++
 		if self.OnAcceptConnCallback != nil {
@@ -115,6 +130,7 @@ func (self *TcpServer) Start() (err error) {
 			} else {
 				connId--
 				conn.Close()
+				log.Printf("close conn(%d)", connId)
 			}
 		} else {
 			connx := &TCPConnEx{*conn, self.ReadBufSize, nil}
@@ -123,6 +139,7 @@ func (self *TcpServer) Start() (err error) {
 			go self.connReadHandler(connx, connId)
 		}
 	}
+
 	return nil
 }
 
@@ -140,6 +157,8 @@ type TcpClient struct {
 	// connExt: 为 conn 扩展的字段，将会传递到 TCPConnEx 结构中
 	OnDialCallback func(self *TcpClient, conn *net.TCPConn) (ok bool, readSize int, connExt interface{})
 
+	// 连接收到数据后调用，len(data) <= conn.ReadSize，可以在回调中重新设置 conn.ReadSize 来调整下一次期望收到数据的长度
+	// 返回值 ok 为 false 将清理并关闭该连接
 	OnHandleConnDataCallback func(self *TcpClient, conn *TCPConnEx, data []byte) (ok bool)
 
 	// 关闭连接时调用
@@ -160,13 +179,16 @@ func (self *TcpClient) connReadHandler(conn *TCPConnEx) {
 			self.OnCloseConnCallback(self, conn)
 		}
 		conn.Close()
+		log.Println("close conn")
+		log.Println("stop conn handler")
 	}()
 
+	log.Println("start conn handler")
 	buf := make([]byte, self.ReadBufSize)
 	for {
 		n, err := conn.Read(buf[:conn.ReadSize])
 		if err != nil {
-			log.Printf("%s\n", err.Error())
+			log.Printf("%s", err.Error())
 			break
 		}
 
@@ -178,37 +200,42 @@ func (self *TcpClient) connReadHandler(conn *TCPConnEx) {
 }
 
 func (self *TcpClient) Start() (err error) {
+	log.Println("start client")
 	addr, err := net.ResolveTCPAddr("tcp", self.Addr)
 	if err != nil {
 		log.Println(err.Error())
 		return err
 	}
 
-	retryTimes := self.MaxRetry
+	retryTimesLeft := self.MaxRetry
 	for {
+		log.Printf("dial to %s", addr.String())
 		tm := time.Now()
 		conn, err := net.DialTCP("tcp", nil, addr)
 		if err != nil {
-			log.Println(err.Error())
-			if retryTimes == 0 {
+			log.Printf("%s, retry times(%d)", err.Error(), retryTimesLeft)
+			if retryTimesLeft == 0 {
 				break
-			} else if retryTimes > 0 {
-				retryTimes--
+			} else if retryTimesLeft > 0 {
+				retryTimesLeft--
 			}
 
 			left := self.RetryDelay - time.Now().Sub(tm)
 			if left > 0 {
+				log.Printf("wait for %dms", left/1e6)
 				time.Sleep(left)
 			}
 			continue
 		}
 
-		retryTimes = self.MaxRetry
+		log.Println("conn is established")
+		retryTimesLeft = self.MaxRetry
 		// 连接成功
 		if self.OnDialCallback != nil {
 			ok, readSize, ext := self.OnDialCallback(self, conn)
 			if !ok {
 				conn.Close()
+				log.Println("close conn")
 				break
 			}
 			connx := &TCPConnEx{*conn, readSize, ext}
@@ -221,5 +248,7 @@ func (self *TcpClient) Start() (err error) {
 			self.connReadHandler(connx)
 		}
 	}
+
+	log.Println("stop client")
 	return nil
 }

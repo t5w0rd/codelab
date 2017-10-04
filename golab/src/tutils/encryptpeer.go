@@ -136,11 +136,11 @@ _for:
 				break _for
 			}
 			// drop
-			log.Printf("drop conn(%d) chan datas\n", connId)
+			log.Printf("drop conn(%d) chan datas", connId)
 		default:
-			log.Printf("@@ send notify chan, conn(%d)\n", connId)
+			log.Printf("@@ send notify chan, conn(%d)", connId)
 			self.connCloseNotifyChan <- connId
-			log.Printf("## sent notify chan, conn(%d), finished\n", connId)
+			log.Printf("## sent notify chan, conn(%d), finished", connId)
 			break _for
 		}
 	}
@@ -153,7 +153,7 @@ func (self *EncryptTunPeer) clean() {
 	todel.Range(func(k, v interface{}) bool {
 		connId := k.(uint32)
 		connChan := v.(chan connChanItem)
-		log.Printf("cleaning, close conn(%d) chan\n", connId)
+		log.Printf("cleaning, close conn(%d) chan", connId)
 		close(connChan)
 		return true
 	})
@@ -176,7 +176,7 @@ _for:
 	log.Println("all of conn handler and peer conn op hander stopped")
 
 	if self.mode == server_mode_proxy {
-		log.Printf("stop listener(%s)\n", self.addr.String())
+		log.Printf("stop listener(%s)", self.addr.String())
 		self.lstn.Close()
 	}
 }
@@ -184,7 +184,7 @@ _for:
 // 连接处理循环
 func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
 	self.wg.Add(1)
-	log.Printf("start conn(%d) handler\n", connId)
+	log.Printf("start conn(%d) handler", connId)
 	buf := make([]byte, max_tcp_read)
 	for {
 		n, err := conn.Read(buf)
@@ -199,19 +199,19 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
 		//}
 
 		// tell to (connect and )send data
-		log.Printf("send conn(%d) op: senddata\n", connId)
+		log.Printf("send conn(%d) op: senddata", connId)
 		protodata := packData(connId, buf[:n])
 		self.peer.Write(protodata)
 	}
 
-	log.Printf("stop conn(%d) handler\n", connId)
+	log.Printf("stop conn(%d) handler", connId)
 	if v, ok := self.connChanMap.Load(connId); ok {
 		// 来自 conn 的关闭
-		log.Printf("send conn(%d) op: close\n", connId)
+		log.Printf("send conn(%d) op: close", connId)
 		protodata := packClose(connId)
 		self.peer.Write(protodata)
 		connChan := v.(chan connChanItem)
-		log.Printf("conn EOF, notify to close conn(%d) chan\n", connId)
+		log.Printf("conn EOF, notify to close conn(%d) chan", connId)
 		//safeClose(connChan)
 		self.notifyToCloseChan(connChan, connId)
 	}
@@ -220,7 +220,7 @@ func (self *EncryptTunPeer) startConnHandler(conn *net.TCPConn, connId uint32) {
 
 // 处理远端 peer 发送过来的请求
 func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId uint32) (connChan chan connChanItem) {
-	log.Printf("start peer conn(%d) op handler\n", connId)
+	log.Printf("start peer conn(%d) op handler", connId)
 	connChan = make(chan connChanItem, max_peer_conn_op_chan_size)
 	self.connChanMap.Store(connId, connChan)
 
@@ -234,7 +234,7 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
 		for {
 			item, ok = <-connChan
 			if !ok {
-				log.Printf("conn(%d) chan is closed\n", connId)
+				log.Printf("conn(%d) chan is closed", connId)
 				//self.connChanMap.Delete(connId)
 				if conn != nil {
 					conn.Close()
@@ -247,15 +247,15 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
 				unpackConnect(item.reader)
 				// agent
 				var err error
-				log.Printf("conn(%d) dial(%s)\n", connId, self.addr.String())
+				log.Printf("conn(%d) dial(%s)", connId, self.addr.String())
 				conn, err = net.DialTCP("tcp", nil, self.addr)
 				if err != nil {
 					// tell to close
 					log.Println(err.Error())
-					log.Printf("send conn(%d) op: close\n", connId)
+					log.Printf("send conn(%d) op: close", connId)
 					protodata := packClose(connId)
 					self.peer.Write(protodata)
-					log.Printf("dial(%s) err, notify to close conn(%d) chan\n", self.addr.String(), connId)
+					log.Printf("dial(%s) err, notify to close conn(%d) chan", self.addr.String(), connId)
 					//safeClose(connChan)
 					self.notifyToCloseChan(connChan, connId)
 				} else {
@@ -270,13 +270,13 @@ func (self *EncryptTunPeer) goStartPeerConnOpHandler(conn *net.TCPConn, connId u
 				unpackClose(item.reader)
 				//self.connChanMap.Delete(connId)
 				conn.Close()
-				log.Printf("peer op, notify to close conn(%d) chan\n", connId)
+				log.Printf("peer op, notify to close conn(%d) chan", connId)
 				//safeClose(connChan)
 				self.notifyToCloseChan(connChan, connId)
 				break _for
 			}
 		}
-		log.Printf("stop peer conn(%d) op handler\n", connId)
+		log.Printf("stop peer conn(%d) op handler", connId)
 		self.wg.Done()
 	}()
 
@@ -292,12 +292,12 @@ func (self *EncryptTunPeer) dispatchPeerConnOp(cmd uint16, reader io.Reader) {
 	} else if v, ok := self.connChanMap.Load(connId); ok {
 		connChan = v.(chan connChanItem)
 	} else {
-		log.Printf("invalid dispatch, connId(%d)\n", connId)
+		log.Printf("invalid dispatch, connId(%d)", connId)
 		return
 	}
-	log.Printf("@@ serialize op conn(%d), send conn chan\n", connId)
+	log.Printf("@@ serialize op conn(%d), send conn chan", connId)
 	connChan <- connChanItem{cmd, reader}
-	log.Printf("## serialize op conn(%d), sent conn chan, finished\n", connId)
+	log.Printf("## serialize op conn(%d), sent conn chan, finished", connId)
 }
 
 // 主连接处理循环
@@ -307,7 +307,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
 	slde := NewSlde()
 	sldeleft := SLDE_HEADER_SIZE
 	for {
-		//log.Printf("peer will read %d bytes\n", sldeleft)
+		//log.Printf("peer will read %d bytes", sldeleft)
 		log.Println("@@@@@ peer read")
 		n, err := self.peer.Read(buf[:sldeleft])
 		log.Println("##### peer read finished")
@@ -352,7 +352,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
 				if ok {
 					if v, ok := self.connChanMap.Load(connId); ok {
 						connChan := v.(chan connChanItem)
-						log.Printf("close conn(%d) chan\n", connId)
+						log.Printf("close conn(%d) chan", connId)
 						self.connChanMap.Delete(connId)
 						close(connChan)
 					}
@@ -382,7 +382,7 @@ func (self *EncryptTunPeer) startPeerHandler() {
 
 func (self *EncryptTunPeer) startProxy() (err error) {
 	log.Println("start proxy")
-	log.Printf("start listener(%s)\n", self.addr.String())
+	log.Printf("start listener(%s)", self.addr.String())
 	self.lstn, err = net.ListenTCP("tcp", self.addr)
 	if err != nil {
 		log.Println(err.Error())
@@ -402,7 +402,7 @@ func (self *EncryptTunPeer) startProxy() (err error) {
 
 		connId += 1
 		self.goStartPeerConnOpHandler(conn, connId)
-		log.Printf("send conn(%d) op: connect\n", connId)
+		log.Printf("send conn(%d) op: connect", connId)
 		data := packConnect(connId)
 		self.peer.Write(data)
 		go self.startConnHandler(conn, connId)

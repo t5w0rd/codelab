@@ -38,7 +38,7 @@ func NewIdWorker(workerid int64) (obj *IdWorker, err error) {
 	obj.maxWorkerId = getMaxWorkerId()
 
 	if workerid > obj.maxWorkerId || workerid < 0 {
-		return nil, errors.New("Worker not fit")
+		return nil, errors.New("worker not fit")
 	}
 	obj.workerId = workerid
 	obj.lastTimeStamp = -1
@@ -80,7 +80,7 @@ func (self *IdWorker) NextId() (ret int64, time int64, err error) {
 		}
 	} else {
 		self.lock.Unlock()
-		err = errors.New("Clock moved backwards, Refuse gen id")
+		err = errors.New("clock moved backwards, Refuse gen id")
 		return 0, ts, err
 	}
 
@@ -95,6 +95,6 @@ func ParseId(id int64) (t time.Time, ts int64, workerId int64, seq int64) {
 	seq = id & CSequenceMask
 	workerId = (id >> CWorkerIdShift) & CMaxWorker
 	ts = (id >> CTimeStampShift) + CEpoch
-	t = time.Unix(ts/1000, (ts%1000)*1000000)
+	t = time.Unix(ts/1000, (ts%1000)*1e6)
 	return t, ts, workerId, seq
 }
