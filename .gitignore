@@ -1,9 +1,12 @@
 .*.swp
 *.pyc
+*.pyo
 .DS_Store
 .idea
 pyinstaller
 golab/pkg
-golab/bin
+golab/bin/linux_amd64/golab
+golab/bin/darwin_amd64/golab
+golab/bin/windows_amd64/golab.exe
 golab/src/golab/golab
 *.log
