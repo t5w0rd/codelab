@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import os
+__all__ = ['shell']
 
+import os
 
 def shell(cmd):
     pipe = os.popen(cmd)

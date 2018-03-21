@@ -159,7 +159,7 @@ def main():
     mp[2][7] = 4
     # printMap(mp)
     start = (0, 0)
-    end = (17, 17)
+    end = (17, 19)
     closeNodes = astar(mp, start, end)
     if end in closeNodes:
         curNode = end

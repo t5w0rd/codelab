@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
+__all__ = ['join', 'walkdir']
+
 import os
 from collections import deque
 
 def join(parent, child):
-    return '%s/%s' % (parent != '/' and parent or '', child)
+    return '%s/%s' % (parent if parent != '/' else '', child)
 
 def _walk_dfs(top, onerror=None, followlinks=False):
     isdir = os.path.isdir
@@ -83,19 +85,19 @@ def _walk_bfs(top, onerror=None, followlinks=False):
             if not islink(path) or followlinks:
                 lst.append(path)
         
-def walkdir(top, onWalk, mode='dfs', followlinks=False):
+def walkdir(top, onWalk, mode='dfs', followlinks=False, **kwargs):
     '''mode: 'dfs' or 'bfs'.
-    onWalk like: func(deep, parent, child, isDir)'''
+    onWalk like: func(parent, child, isDir, **kwargs)'''
     walk = (mode == 'dfs' and _walk_dfs) or _walk_bfs
     for deep, path, dirs, files in walk(top, followlinks=followlinks):
         for d in dirs:
-            onWalk(deep, path, d, True)
+            onWalk(path, d, True, **kwargs)
         for f in files:
-            onWalk(deep, path, f, False)
+            onWalk(path, f, False, **kwargs)
         
-def what(deep, parent, child, isDir):
+def what(parent, child, isDir, **kwargs):
     #print os.path.abspath('%s/%s' % (parent, child))
-    print '%d %s/%s' % (deep, parent, child)
+    print '%s/%s' % (parent, child)
     #print '%s' % (parent,)
 
 def main():
