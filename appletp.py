@@ -28,7 +28,9 @@ def _everyfile(parent, child, isDir, dstdir=None, src_base_index=None, cmds=None
 def _worker(idx, cmds, msz):
     while True:
         try:
+            print '[%d] @@4' % (idx,)
             cmd = cmds.get_nowait()
+            print '[%d] @@4e' % (idx,)
             if cmd['c'] in ('plist', 'png'):
                 src = cmd['src']
                 dst = cmd['dst']
@@ -36,7 +38,9 @@ def _worker(idx, cmds, msz):
                 if not os.path.exists(dnm):
                     os.makedirs(dnm, 0755)
 
+                print '[%d] @@3 %s' % (idx, cmd['tmpl'] % (src, dst))
                 shell.shell(cmd['tmpl'] % (src, dst))
+                print '[%d] @@3e' % (idx,)
                 if cmd['c'] == 'plist':
                     pl = plistlib.readPlist(dst)
                     changed = False
@@ -53,9 +57,13 @@ def _worker(idx, cmds, msz):
                         pl['frames'][t] = pl['frames'].pop(f)
                     changed = changed or bool(to_rename)
                     if changed:
+                        print '[%d] @@2' % (idx,)
                         plistlib.writePlist(pl, dst)
+                        print '[%d] @@2e' % (idx,)
 
+            print '[%d] @@1' % (idx,)
             proc = msz - cmds.qsize()
+            print '[%d] @@1e' % (idx,)
             print '[%d] %d/%d %.1f%%' % (idx, proc, msz, proc*100.0/msz)
 
         except multiprocessing.managers.Queue.Empty, e:
