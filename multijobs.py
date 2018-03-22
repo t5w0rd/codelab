@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+import os
+import multiprocessing
+import collections
+
 def multijobs(target, argslist, workers=None):
     if not workers:
         workers = multiprocessing.cpu_count()
@@ -63,4 +67,15 @@ def multijobs(target, argslist, workers=None):
     for pid in seq:
         ret.append(results[pid])
 
+    return ret
+
+def splitlist(lst, num):
+    ret = []
+    msz = len(lst)
+    sz = max(1, int(round(len(lst) * 1.0 / num)))
+    p = 0
+    for i in xrange(num):
+        p2 = p+sz if i!=num-1 else msz
+        ret.append(lst[p:p2])
+        p += sz
     return ret
