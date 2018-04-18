@@ -12,9 +12,12 @@ def multijobs(target, argslist, workers=None):
 
     # target wapper
     def worker(target, args):
-        res = target(*args)
-        pid = os.getpid()
-        msgq.put((pid, res))
+        try:
+            res = target(*args)
+            pid = os.getpid()
+            msgq.put((pid, res))
+        except Exception, e:
+            msgq.put((pid, e))
 
     # add proc to waiting
     waiting = collections.deque()

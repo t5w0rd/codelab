@@ -41,7 +41,7 @@ def _worker(idx, cmds, msz):
                 print '[%d] @@3 %s' % (idx, cmd['tmpl'] % (src, dst))
                 shell.shell(cmd['tmpl'] % (src, dst))
                 print '[%d] @@3e' % (idx,)
-                if cmd['c'] == 'plist':
+                if False and cmd['c'] == 'plist':
                     pl = plistlib.readPlist(dst)
                     changed = False
                     if 'textureFileName' not in pl['metadata']:
