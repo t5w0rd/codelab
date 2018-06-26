@@ -10,7 +10,7 @@ def multijobs(target, argslist, workers=None):
     workers = min(len(argslist), workers)
     msgq = multiprocessing.Queue()
 
-    # target wapper
+    # target wrapper
     def worker(target, args):
         try:
             res = target(*args)
