@@ -182,7 +182,7 @@ if __name__ == '__main__':
     for i in reversed(k):
         p = i['1']
         tr.step(p)
-    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f' % (start, end, min_price, max_price)
+    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f (%.2f%%)' % (start, end, min_price, max_price, ((max_price-min_price)*100.0/max_price+(max_price-min_price)*100.0/min_price)/2)
     print 'Now:'
     tr.print_detail(price)
     print '\n[At Highest Price]:'
