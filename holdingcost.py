@@ -4,7 +4,7 @@
 class Holding:
     cost = 0.0
     num = 0.0
-    charge_per = 0.0001
+    charge_rate = 0.0001
     min_charge = 0.1
     name = ""
 
@@ -19,7 +19,7 @@ class Holding:
     def buy(self, num, price):
         self.num += num
         cost = price * num
-        cost += max(self.min_charge, cost*self.charge_per)
+        cost += max(self.min_charge, cost*self.charge_rate)
         self.cost += cost
         print 'buy %d at %.3f, total -%.2f' % (num, price, cost)
         return cost
@@ -29,7 +29,7 @@ class Holding:
             raise ValueError('sell too much (%g/%g)' % (num, self.num))
         self.num -= num
         cost = price * num
-        cost -= max(self.min_charge, cost*self.charge_per)
+        cost -= max(self.min_charge, cost*self.charge_rate)
         self.cost -= cost
         print 'sell %d at %.3f total +%.2f' % (num, price, cost)
         return cost
@@ -46,22 +46,22 @@ class Holding:
         return max(0, self.cost / self.num)
 
     def print_detail(self, price):
-        fp = self.float_profit(price)
-        fpPer = fp * 100.0 / self.cost
+        pl = self.float_profit(price)
         uc = self.unit_cost()
         text = '''Name: %s
 Current Price: %.3f
 Unit Cost: %s
 Open Interest: %d
 Market Value: %.2f
-Float Profit: %.2f%s''' % (
+Float Profit: %s%.2f%s''' % (
                 self.name,
                 price,
                 '0.000' if uc is None else '%.3f' % (uc,),
                 self.num,
                 price*self.num,
-                fp,
-                '' if self.cost<=0 else '(%.2f%%)' % (fp*100.0/self.cost,))
+                '+' if pl>0 else '',
+                pl,
+                '' if self.cost<=0 else ('(%s%%.2f%%%%)' % ('+' if pl>0 else '',)) % (pl*100.0/self.cost,))
         print text
 # =1331  4
 # <1331 1000  3
@@ -146,17 +146,30 @@ class LevelTrade:
         pl = (final - self._budget) * 100.0 / self._budget
         free = self._budget - self.holding.cost
         free_rate = free * 100.0 / self._budget
-        text = 'Budget: %.2f\nMax Used: %.2f(%.2f%%)\nFinal: %.2f(%.2f%%)\nFree: %.2f(%.2f%%)' % (self._budget, self._budget_max_used, u, final, pl, free, free_rate)
+        text = '''Budget: %.2f
+Max Used: %.2f(%.2f%%)
+Final: %.2f(%s%.2f%%)
+Free: %.2f(%.2f%%)''' % (
+        self._budget,
+        self._budget_max_used,
+        u,
+        final,
+        '+' if pl>0 else '',
+        pl,
+        free,
+        free_rate)
         print text
 
 if __name__ == '__main__':
     import sys
     import requests
     if len(sys.argv) < 2:
-        print 'Usage:\n  %s <stock_code> [mode:0|1|2|3]' % (sys.argv[0],)
+        print 'Usage:\n  %s <stock_code> [mode:0|1|2|3] [charge_rate] [charge_min]' % (sys.argv[0],)
         sys.exit(1)
     symbol = sys.argv[1]
     mode = 0 if len(sys.argv)<3 else int(sys.argv[2])
+    charge_rate = 0.0001 if len(sys.argv)<4 else float(sys.argv[3])
+    charge_min = 0.1 if len(sys.argv)<4 else float(sys.argv[3])
     market = symbol[:2]
     symbol_raw = symbol[2:]
     url = r'https://market.youyu.cn/app/v3/quote/user/query/stockdetail?marketcode=%s&stockcode=%s&graph_tab_index=2&k_not_refresh=0&stock_type=010104&klinenum=100' % (market, symbol_raw)
@@ -173,18 +186,23 @@ if __name__ == '__main__':
     for i in k:
         _max = i['4']
         _min = i['5']
-        if max_price is None or _max > max_price:
+        if max_price is None or _max>max_price:
             max_price = _max
-        if min_price is None or _min < min_price:
+        if min_price is None or _min<min_price:
             min_price = _min
     h = Holding(symbol)
-    tr = LevelTrade(h, 20000, min_price, max_price, 0.03, mode)
+    h.charge_rate = charge_rate
+    h.min_charge = charge_min
+    tr = LevelTrade(h, 100000, min_price, max_price, 0.01, mode)
+    avg = 0.0
     for i in reversed(k):
         p = i['1']
+        avg += p
         tr.step(p)
-    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f (%.2f%%)' % (start, end, min_price, max_price, ((max_price-min_price)*100.0/max_price+(max_price-min_price)*100.0/min_price)/2)
+    avg /= len(k)
+    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f (%.2f%%)\nAvange Price: %.3f\n' % (start, end, min_price, max_price, (max_price-min_price)*100.0/min_price, avg)
     print 'Now:'
     tr.print_detail(price)
-    print '\n[At Highest Price]:'
-    tr.step(max_price)
-    tr.print_detail(max_price)
+    print '\n[At Avange Price(%.3f)]:' % (avg,)
+    tr.step(avg)
+    tr.print_detail(avg)
