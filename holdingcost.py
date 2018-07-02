@@ -193,7 +193,7 @@ if __name__ == '__main__':
     h = Holding(symbol)
     h.charge_rate = charge_rate
     h.min_charge = charge_min
-    tr = LevelTrade(h, 100000, min_price, max_price, 0.01, mode)
+    tr = LevelTrade(h, 10000000, min_price, max_price, 0.02, mode)
     avg = 0.0
     for i in reversed(k):
         p = i['1']
