@@ -86,7 +86,7 @@ class LevelTrade(Trade):
     _budget = 0.0
     _budget_per_level = 0.0
     _budget_max_used = 0.0
-    _mode = 0
+    mode = 0
 
     def __init__(self, holding, budget, min_price, max_price, level_chg, mode=0):
         self.holding = holding
@@ -96,18 +96,18 @@ class LevelTrade(Trade):
         self._level_chg = level_chg
         self._max_level = self.calc_level(max_price)
         self._budget_per_level = 1.0 * self._budget / (self._max_level - 1)
-        self._mode = mode
+        self.mode = mode
 
     def calc_level(self, price):
         level = int(round(math.log(1.0*price/self._min_price, 1.0+self._level_chg)+1, 5))
         return level
 
     def calc_num(self, level, price):
-        if self._mode == 1:
+        if self.mode == 1:
             num = round(1.0*self._budget_per_level/self._min_price/100) * 100
-        elif self._mode == 2:
+        elif self.mode == 2:
             num = round(1.0*self._budget_per_level/(self._min_price+self._max_price)*2/100) * 100
-        elif self._mode == 3:
+        elif self.mode == 3:
             num = round(1.0*self._budget_per_level/self._max_price/100) * 100
         else:
             num = round(1.0*self._budget_per_level*level/price/100) * 100
@@ -137,6 +137,12 @@ class LevelTrade(Trade):
                     if self.holding.cost > self._budget_max_used:
                         self._budget_max_used = self.holding.cost
             self._level = level
+    
+    def step_by_kline(self, kline):
+        if not kline.data:
+            return
+        prices = [item['1'] for item in kline.data]
+        self.step(*prices)
 
     def reset(self, reset_holding=False):
         self._level = self.calc_level(self._max_price)
@@ -168,48 +174,60 @@ Free: %.2f(%.2f%%)''' % (
 import requests
 class KLine:
     symbol = ""
-    kline = None
-    low_price = None
-    high_price = None
-    avg_price = None
-    cur_price = None
+    data = None
+    low = None  # 最低价
+    high = None  # 最高价
+    avg = None  # 平均价
+    cur = None  # 最新价
+    hv = None  # 历史波动率
 
     def __init__(self, symbol):
         self.symbol = symbol
 
-    def update(start=None, end=None):
+    def update(self, start=None, end=None):
         market = self.symbol[:2]
         symbol_raw = self.symbol[2:]
         url = r'https://market.youyu.cn/app/v3/quote/user/query/stockdetail?marketcode=%s&stockcode=%s&graph_tab_index=2&k_not_refresh=0&stock_type=010104&klinenum=100' % (market, symbol_raw)
         res = requests.get(url).json()
-        if not 'data' in res or not 'graph_tab_data' in res['data'] or not 'all_data' in res['data']['graph_tab_data']:
+        if not 'data' in res or not 'graph_tab_data' in res['data'] or not res['data']['graph_tab_data'] or not 'all_data' in res['data']['graph_tab_data'][0]:
             return False
         k = res['data']['graph_tab_data'][0]['all_data']
-        self.kline = []
-        self.low_price = None
-        self.high_price = None
-        self.cur_price = k[0]['1']
-        self.avg_price = 0.0
-        s = 0
+        self.data = []
+        self.low = None
+        self.high = None
+        self.cur = k[0]['1']
+        self.avg = 0.0
+        last_p = None
+        v_rate = []
+        v_rate_avg = 0.0
         for i in reversed(k):
             date = i['44']
             if (start is None or date>=start) and (end is None or date<=end):
-                self.kline.append(i)
+                self.data.append(i)
                 price = i['1']
                 self.avg += price
-                s += 1
-                if self.low_price is None or i['5']<self.low_price:
-                    self.low_price = i['5']
-                if self.high_price is None or i['4']<self.high_price:
-                    self.high_price = i['4']
-        self.avg_price = self.avg_price / s
+                if not last_p is None:
+                    rate = math.log(price/last_p)
+                    v_rate.append(rate)
+                    v_rate_avg += rate
+                last_p = price
+                if self.low is None or i['5']<self.low:
+                    self.low = i['5']
+                if self.high is None or i['4']>self.high:
+                    self.high = i['4']
+        self.avg /= len(self.data)
+        v_rate_avg /= len(v_rate)
+        self.hv = 0.0
+        for rate in v_rate:
+            self.hv += (rate - v_rate_avg) ** 2.0
+        self.hv = (self.hv / len(v_rate)) ** 0.5
+
         return True
     
-    def trade(trade):
-        if not self.kline:
-            return
-        prices = [item['1'] for item in self.kline]
-        tr.step(*prices)
+def get_kline(symbol, start=None, end=None):
+    k = KLine(symbol)
+    k.update(start, end)
+    return k
 
 if __name__ == '__main__':
     import sys
