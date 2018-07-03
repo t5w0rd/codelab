@@ -63,6 +63,11 @@ Float Profit: %s%.2f%s''' % (
                 pl,
                 '' if self.cost<=0 else ('(%s%%.2f%%%%)' % ('+' if pl>0 else '',)) % (pl*100.0/self.cost,))
         print text
+
+class Trade:
+    def step(self, *prices):
+        pass
+
 # =1331  4
 # <1331 1000  3
 # <1210 1000  2
@@ -71,7 +76,7 @@ Float Profit: %s%.2f%s''' % (
 # 900 1000    -1
 # 3000, 100, 200, 0.50, 150   (1+per)^n=max/min 200-100
 import math
-class LevelTrade:
+class LevelTrade(Trade):
     holding = None
     _min_price = 0.0
     _max_price = 0.0
@@ -159,6 +164,52 @@ Free: %.2f(%.2f%%)''' % (
         free,
         free_rate)
         print text
+
+import requests
+class KLine:
+    symbol = ""
+    kline = None
+    low_price = None
+    high_price = None
+    avg_price = None
+    cur_price = None
+
+    def __init__(self, symbol):
+        self.symbol = symbol
+
+    def update(start=None, end=None):
+        market = self.symbol[:2]
+        symbol_raw = self.symbol[2:]
+        url = r'https://market.youyu.cn/app/v3/quote/user/query/stockdetail?marketcode=%s&stockcode=%s&graph_tab_index=2&k_not_refresh=0&stock_type=010104&klinenum=100' % (market, symbol_raw)
+        res = requests.get(url).json()
+        if not 'data' in res or not 'graph_tab_data' in res['data'] or not 'all_data' in res['data']['graph_tab_data']:
+            return False
+        k = res['data']['graph_tab_data'][0]['all_data']
+        self.kline = []
+        self.low_price = None
+        self.high_price = None
+        self.cur_price = k[0]['1']
+        self.avg_price = 0.0
+        s = 0
+        for i in reversed(k):
+            date = i['44']
+            if (start is None or date>=start) and (end is None or date<=end):
+                self.kline.append(i)
+                price = i['1']
+                self.avg += price
+                s += 1
+                if self.low_price is None or i['5']<self.low_price:
+                    self.low_price = i['5']
+                if self.high_price is None or i['4']<self.high_price:
+                    self.high_price = i['4']
+        self.avg_price = self.avg_price / s
+        return True
+    
+    def trade(trade):
+        if not self.kline:
+            return
+        prices = [item['1'] for item in self.kline]
+        tr.step(*prices)
 
 if __name__ == '__main__':
     import sys
