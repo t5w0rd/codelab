@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 #coding:utf-8
 
+import math
+import requests
+import datetime
+import time
+import pickle
+
 class Holding:
     cost = 0.0
     num = 0.0
@@ -63,6 +69,29 @@ Float Profit: %s%.2f%s''' % (
                 pl,
                 '' if self.cost<=0 else ('(%s%%.2f%%%%)' % ('+' if pl>0 else '',)) % (pl*100.0/self.cost,))
         print text
+        return text
+
+class DingTalk:
+    url = None
+
+    def __init__(self, url):
+        self.url = url
+
+    def msg(self, msg):
+        payload = {
+            "msgtype": "text",
+            "text": {
+                "content": msg+"\n@15652234096"
+            },
+            "at": {
+                "atMobiles": [
+                    "15652234096"
+                ], 
+                "isAtAll": False
+            }
+        }
+        requests.post(self.url, json=payload)
+
 
 class Trade:
     def step(self, *prices):
@@ -75,7 +104,6 @@ class Trade:
 # <1000 
 # 900 1000    -1
 # 3000, 100, 200, 0.50, 150   (1+per)^n=max/min 200-100
-import math
 class LevelTrade(Trade):
     holding = None
     _min_price = 0.0
@@ -87,6 +115,7 @@ class LevelTrade(Trade):
     _budget_per_level = 0.0
     _budget_max_used = 0.0
     mode = 0
+    messager = None
 
     def __init__(self, holding, budget, min_price, max_price, level_chg, mode=0):
         self.holding = holding
@@ -114,6 +143,7 @@ class LevelTrade(Trade):
         return num
 
     def step(self, *prices):
+        ret = False
         for price in prices:
             level = self.calc_level(price)
             if self._level is None:
@@ -124,25 +154,32 @@ class LevelTrade(Trade):
             if dt > 0:
                 # sell
                 num = self.calc_num(dt, price)
-                if num > 0:
+                if num>0 and self.holding.num>0:
                     if num > self.holding.num:
-                        self.holding.sell_all(price)
-                    else:
-                        self.holding.sell(num, price)
+                        num = self.holding.num
+                    cost = self.holding.sell(num, price)
+                    self._level = level
+                    ret = True
+                    if self.messager:
+                        self.messager.msg('%s\nSELL %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,)))
             elif dt < 0:
                 # buy
                 num = self.calc_num(-dt, price)
                 if num > 0:
-                    self.holding.buy(num, price)
+                    cost = self.holding.buy(num, price)
+                    self._level = level
                     if self.holding.cost > self._budget_max_used:
                         self._budget_max_used = self.holding.cost
-            self._level = level
-    
+                    ret = True
+                    if self.messager:
+                        self.messager.msg('%s\nBUY %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if -cost<0 else '+%.2f') % (-cost,)))
+        return ret
+            
     def step_by_kline(self, kline):
         if not kline.data:
             return
         prices = [item['1'] for item in kline.data]
-        self.step(*prices)
+        return self.step(*prices)
 
     def reset(self, reset_holding=False):
         self._level = self.calc_level(self._max_price)
@@ -151,16 +188,17 @@ class LevelTrade(Trade):
             self.holding.reset()
 
     def print_detail(self, price):
-        self.holding.print_detail(price)
+        text = self.holding.print_detail(price)
         u = self._budget_max_used * 100.0 / self._budget
         final = self._budget + self.holding.float_profit(price)
         pl = (final - self._budget) * 100.0 / self._budget
         free = self._budget - self.holding.cost
         free_rate = free * 100.0 / self._budget
-        text = '''Budget: %.2f
+        text = '''%s\nBudget: %.2f
 Max Used: %.2f(%.2f%%)
 Final: %.2f(%s%.2f%%)
 Free: %.2f(%.2f%%)''' % (
+        text,
         self._budget,
         self._budget_max_used,
         u,
@@ -169,9 +207,11 @@ Free: %.2f(%.2f%%)''' % (
         pl,
         free,
         free_rate)
+        if self.messager:
+            self.messager.msg(text)
         print text
+        return text
 
-import requests
 class KLine:
     symbol = ""
     data = None
@@ -188,7 +228,10 @@ class KLine:
         market = self.symbol[:2]
         symbol_raw = self.symbol[2:]
         url = r'https://market.youyu.cn/app/v3/quote/user/query/stockdetail?marketcode=%s&stockcode=%s&graph_tab_index=2&k_not_refresh=0&stock_type=010104&klinenum=100' % (market, symbol_raw)
-        res = requests.get(url).json()
+        try:
+            res = requests.get(url).json()
+        except Exception, e:
+            return False
         if not 'data' in res or not 'graph_tab_data' in res['data'] or not res['data']['graph_tab_data'] or not 'all_data' in res['data']['graph_tab_data'][0]:
             return False
         k = res['data']['graph_tab_data'][0]['all_data']
@@ -229,6 +272,45 @@ def get_kline(symbol, start=None, end=None):
     k.update(start, end)
     return k
 
+class Robot:
+    symbol = ""
+    holding = None
+    trade = None
+    kline = None
+    messager = None
+
+    def __init__(self, symbol, budget, low, high, chg):
+        self.symbol = symbol
+        self.holding = Holding(symbol)
+        self.trade = LevelTrade(self.holding, budget, low, high, chg)
+        self.kline = KLine(symbol)
+
+    def _update_kline(self):
+        end = datetime.datetime.now()
+        start = end - datetime.timedelta(days=7)
+        return self.kline.update(start.strftime('%Y%m%d'), end.strftime('%Y%m%d'))
+
+    def save(self, file_name=None):
+        if not file_name:
+            file_name = self.symbol+'.rob'
+        with open(file_name, 'wb') as fp:
+            pickle.dump(self, fp)
+
+    def start(self, sleep=10):
+        self.trade.messager = self.messager
+        while True:
+            now = time.time()
+            if self._update_kline():
+                if self.trade.step(self.kline.cur):
+                    self.save()
+                    self.trade.print_detail(self.kline.cur)
+            time.sleep(sleep)
+
+def load_robot(file_name):
+    with open(file_name, 'rb') as fp:
+        return pickle.load(fp)
+    return None
+
 if __name__ == '__main__':
     import sys
     import requests
@@ -239,39 +321,20 @@ if __name__ == '__main__':
     mode = 0 if len(sys.argv)<3 else int(sys.argv[2])
     charge_rate = 0.0001 if len(sys.argv)<4 else float(sys.argv[3])
     charge_min = 0.1 if len(sys.argv)<4 else float(sys.argv[3])
-    market = symbol[:2]
-    symbol_raw = symbol[2:]
-    url = r'https://market.youyu.cn/app/v3/quote/user/query/stockdetail?marketcode=%s&stockcode=%s&graph_tab_index=2&k_not_refresh=0&stock_type=010104&klinenum=100' % (market, symbol_raw)
-    res = requests.get(url).json()
-    if not 'graph_tab_data' in res['data']:
+    k = get_kline(symbol)
+    if not k:
         print >>sys.stderr, 'Wrong symbol(%s)' % (symbol,)
         sys.exit(1)
-    k = res['data']['graph_tab_data'][0]['all_data']
-    start = k[len(k)-1]['44']
-    end = k[0]['44']
-    price = k[0]['1']
-    max_price = None
-    min_price = None
-    for i in k:
-        _max = i['4']
-        _min = i['5']
-        if max_price is None or _max>max_price:
-            max_price = _max
-        if min_price is None or _min<min_price:
-            min_price = _min
+    start = k.data[0]['44']
+    end = k.data[len(k.data)-1]['44']
     h = Holding(symbol)
     h.charge_rate = charge_rate
     h.min_charge = charge_min
-    tr = LevelTrade(h, 10000000, min_price, max_price, 0.02, mode)
-    avg = 0.0
-    for i in reversed(k):
-        p = i['1']
-        avg += p
-        tr.step(p)
-    avg /= len(k)
-    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f (%.2f%%)\nAvange Price: %.3f\n' % (start, end, min_price, max_price, (max_price-min_price)*100.0/min_price, avg)
+    tr = LevelTrade(h, 10000000, k.low, k.high, 0.02, mode)
+    tr.step_by_kline(k)
+    print 'Date: %s -> %s\nPrice Range: %.3f ~ %.3f (%.2f%%)\nAvange Price: %.3f\nHistory Volatility: %.2f%%\n' % (start, end, k.low, k.high, (k.high-k.low)*100.0/k.low, k.avg, k.hv*100.0)
     print 'Now:'
-    tr.print_detail(price)
-    print '\n[At Avange Price(%.3f)]:' % (avg,)
-    tr.step(avg)
-    tr.print_detail(avg)
+    tr.print_detail(k.cur)
+    print '\n[At Avange Price(%.3f)]:' % (k.avg,)
+    tr.step(k.avg)
+    tr.print_detail(k.avg)
