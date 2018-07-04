@@ -220,6 +220,7 @@ class KLine:
     avg = None  # 平均价
     cur = None  # 最新价
     hv = None  # 历史波动率
+    date = None
 
     def __init__(self, symbol):
         self.symbol = symbol
@@ -239,6 +240,7 @@ class KLine:
         self.low = None
         self.high = None
         self.cur = k[0]['1']
+        self.date = k[0]['44']
         self.avg = 0.0
         last_p = None
         v_rate = []
@@ -296,14 +298,15 @@ class Robot:
         with open(file_name, 'wb') as fp:
             pickle.dump(self, fp)
 
-    def start(self, sleep=10):
+    def start(self, sleep=10, begin=None):
         self.trade.messager = self.messager
         while True:
             now = time.time()
             if self._update_kline():
-                if self.trade.step(self.kline.cur):
-                    self.save()
-                    self.trade.print_detail(self.kline.cur)
+                if not begin or self.kline.date>=begin:
+                    if self.trade.step(self.kline.cur):
+                        self.save()
+                        self.trade.print_detail(self.kline.cur)
             time.sleep(sleep)
 
 def load_robot(file_name):
