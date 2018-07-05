@@ -287,10 +287,10 @@ class Robot:
     kline = None
     messager = None
 
-    def __init__(self, symbol, budget, low, high, chg):
+    def __init__(self, symbol, budget, low, high, chg, mode):
         self.symbol = symbol
         self.holding = Holding(symbol)
-        self.trade = LevelTrade(self.holding, budget, low, high, chg)
+        self.trade = LevelTrade(self.holding, budget, low, high, chg, mode)
         self.kline = KLine(symbol)
 
     def _update_kline(self):
