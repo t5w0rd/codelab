@@ -81,11 +81,12 @@ class DingTalk:
         payload = {
             "msgtype": "text",
             "text": {
-                "content": msg+"\n@15652234096"
+                "content": msg+"\n@15652234096, @15726693988"
             },
             "at": {
                 "atMobiles": [
-                    "15652234096"
+                    "15652234096",
+                    "15726693988"
                 ], 
                 "isAtAll": False
             }
