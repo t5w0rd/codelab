@@ -111,25 +111,28 @@ class LevelTrade(Trade):
     _max_price = 0.0
     _level_chg = 0.0
     _max_level = 0.0
-    _level = None
     _budget = 0.0
     _budget_per_level = 0.0
     _budget_max_used = 0.0
+    _level = None
     mode = 0
     messager = None
 
     def __init__(self, holding, budget, min_price, max_price, level_chg, mode=0):
         self.holding = holding
         self._budget = budget
+        self.mode = mode
         self._min_price = min_price
         self._max_price = max_price
         self._level_chg = level_chg
         self._max_level = self.calc_level(max_price)
         self._budget_per_level = 1.0 * self._budget / (self._max_level - 1)
-        self.mode = mode
 
     def calc_level(self, price):
-        level = int(round(math.log(1.0*price/self._min_price, 1.0+self._level_chg)+1, 5))
+        if self.mode == 4:
+            level = int(round((1.0*price-self._min_price)/self._level_chg+1, 5))
+        else:
+            level = int(round(math.log(1.0*price/self._min_price, 1.0+self._level_chg)+1, 5))
         return level
 
     def calc_num(self, level, price):
@@ -158,6 +161,7 @@ class LevelTrade(Trade):
                 if num>0 and self.holding.num>0:
                     if num > self.holding.num:
                         num = self.holding.num
+                    print level,
                     cost = self.holding.sell(num, price)
                     self._level = level
                     ret = True
@@ -167,6 +171,7 @@ class LevelTrade(Trade):
                 # buy
                 num = self.calc_num(-dt, price)
                 if num > 0:
+                    print level,
                     cost = self.holding.buy(num, price)
                     self._level = level
                     if self.holding.cost > self._budget_max_used:
@@ -183,7 +188,7 @@ class LevelTrade(Trade):
         return self.step(*prices)
 
     def reset(self, reset_holding=False):
-        self._level = self.calc_level(self._max_price)
+        self._level = None
         self._budget_max_used = 0.0
         if reset_holding:
             self.holding.reset()
@@ -315,9 +320,20 @@ def load_robot(file_name):
         return pickle.load(fp)
     return None
 
+import sys
 if __name__ == '__main__':
-    import sys
-    import requests
+    symbol = sys.args[1]
+    budget = float(sys.args[2])
+    low = float(sys.args[3])
+    high = float(sys.args[4])
+    chg = float(sys.args[5])
+    mode = int(sys.args[6])
+    m = qtrade.DingTalk('https://oapi.dingtalk.com/robot/send?access_token=ca43851cd1f54ad16d7b16b3750e748a8c1687e3dfc98167e65e6470f2b54e6a')
+    r = qtrade.Robot(symbol, budget, low, high, chg, mode)
+    r.messager = m
+    r.start()
+
+def test():
     if len(sys.argv) < 2:
         print 'Usage:\n  %s <stock_code> [mode:0|1|2|3] [charge_rate] [charge_min]' % (sys.argv[0],)
         sys.exit(1)
