@@ -322,12 +322,12 @@ def load_robot(file_name):
 
 import sys
 if __name__ == '__main__':
-    symbol = sys.args[1]
-    budget = float(sys.args[2])
-    low = float(sys.args[3])
-    high = float(sys.args[4])
-    chg = float(sys.args[5])
-    mode = int(sys.args[6])
+    symbol = sys.argv[1]
+    budget = float(sys.argv[2])
+    low = float(sys.argv[3])
+    high = float(sys.argv[4])
+    chg = float(sys.argv[5])
+    mode = int(sys.argv[6])
     m = qtrade.DingTalk('https://oapi.dingtalk.com/robot/send?access_token=ca43851cd1f54ad16d7b16b3750e748a8c1687e3dfc98167e65e6470f2b54e6a')
     r = qtrade.Robot(symbol, budget, low, high, chg, mode)
     r.messager = m
