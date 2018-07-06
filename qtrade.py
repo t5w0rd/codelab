@@ -135,6 +135,13 @@ class LevelTrade(Trade):
             level = math.log(1.0*price/self._min_price, 1.0+self._level_chg) + 1
         return level
 
+    def calc_price(self, level):
+        if self.mode == 4:
+            price = (level - 1.0) * self._level_chg + self._min_price
+        else:
+            price = ((1.0 + self._level_chg) ** (level - 1.0)) * self._min_price
+        return price
+
     def calc_num(self, level, price):
         if self.mode == 1:
             num = round(1.0*self._budget_per_level/self._min_price/100) * 100
@@ -166,7 +173,12 @@ class LevelTrade(Trade):
                     self._level = level
                     ret = True
                     if self.messager:
-                        self.messager.msg('%s\nSELL %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,)))
+                        sell_price = self.calc_price(level+1)
+                        sell_num = self.calc_num(+1, sell_price)
+                        buy_price = self.calc_price(level-1)
+                        buy_num = self.calc_num(-1, buy_price)
+                        text = '%s\nSELL %d at %.3f, %s\nNext Sell: %d at %.3f\nNext Buy: %d at %.3f' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,), sell_num, sell_price, buy_num, buy_price)
+                        self.messager.msg(text)
             elif dt <= -1:
                 # buy
                 num = self.calc_num(-dt, price)
@@ -178,7 +190,12 @@ class LevelTrade(Trade):
                         self._budget_max_used = self.holding.cost
                     ret = True
                     if self.messager:
-                        self.messager.msg('%s\nBUY %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if -cost<0 else '+%.2f') % (-cost,)))
+                        sell_price = self.calc_price(level+1)
+                        sell_num = self.calc_num(+1, sell_price)
+                        buy_price = self.calc_price(level-1)
+                        buy_num = self.calc_num(-1, buy_price)
+                        text = '%s\nBUY %d at %.3f, %s\nNext Sell: %d at %.3f\nNext Buy: %d at %.3f' % (self.holding.name, num, price, ('%.2f' if -cost<0 else '+%.2f') % (-cost,), sell_num, sell_price, buy_num, buy_price)
+                        self.messager.msg(text)
         return ret
             
     def step_by_kline(self, kline):
