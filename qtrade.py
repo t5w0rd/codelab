@@ -130,9 +130,9 @@ class LevelTrade(Trade):
 
     def calc_level(self, price):
         if self.mode == 4:
-            level = int(round((1.0*price-self._min_price)/self._level_chg+1, 5))
+            level = (1.0*price-self._min_price)/self._level_chg + 1
         else:
-            level = int(round(math.log(1.0*price/self._min_price, 1.0+self._level_chg)+1, 5))
+            level = math.log(1.0*price/self._min_price, 1.0+self._level_chg) + 1
         return level
 
     def calc_num(self, level, price):
@@ -155,7 +155,7 @@ class LevelTrade(Trade):
             else:
                 dt = level - self._level
 
-            if dt > 1:
+            if dt >= 1:
                 # sell
                 num = self.calc_num(dt, price)
                 if num>0 and self.holding.num>0:
@@ -167,7 +167,7 @@ class LevelTrade(Trade):
                     ret = True
                     if self.messager:
                         self.messager.msg('%s\nSELL %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,)))
-            elif dt < -1:
+            elif dt <= -1:
                 # buy
                 num = self.calc_num(-dt, price)
                 if num > 0:
