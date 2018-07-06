@@ -155,7 +155,7 @@ class LevelTrade(Trade):
             else:
                 dt = level - self._level
 
-            if dt > 0:
+            if dt > 1:
                 # sell
                 num = self.calc_num(dt, price)
                 if num>0 and self.holding.num>0:
@@ -167,7 +167,7 @@ class LevelTrade(Trade):
                     ret = True
                     if self.messager:
                         self.messager.msg('%s\nSELL %d at %.3f, %s' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,)))
-            elif dt < 0:
+            elif dt < -1:
                 # buy
                 num = self.calc_num(-dt, price)
                 if num > 0:
@@ -321,6 +321,7 @@ def load_robot(file_name):
     return None
 
 import sys
+import os
 if __name__ == '__main__':
     symbol = sys.argv[1]
     budget = float(sys.argv[2])
@@ -328,9 +329,13 @@ if __name__ == '__main__':
     high = float(sys.argv[4])
     chg = float(sys.argv[5])
     mode = int(sys.argv[6])
-    m = DingTalk('https://oapi.dingtalk.com/robot/send?access_token=ca43851cd1f54ad16d7b16b3750e748a8c1687e3dfc98167e65e6470f2b54e6a')
-    r = Robot(symbol, budget, low, high, chg, mode)
-    r.messager = m
+    file_name = symbol+'.rob'
+    if os.path.exists(file_name):
+        r = load_robot(file_name)
+    else:
+        m = DingTalk('https://oapi.dingtalk.com/robot/send?access_token=ca43851cd1f54ad16d7b16b3750e748a8c1687e3dfc98167e65e6470f2b54e6a')
+        r = Robot(symbol, budget, low, high, chg, mode)
+        r.messager = m
     r.start()
 
 def test():
