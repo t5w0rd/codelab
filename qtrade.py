@@ -174,9 +174,9 @@ class LevelTrade(Trade):
                     ret = True
                     if self.messager:
                         sell_price = self.calc_price(level+1)
-                        sell_num = self.calc_num(+1, sell_price)
+                        sell_num = self.calc_num(1, sell_price)
                         buy_price = self.calc_price(level-1)
-                        buy_num = self.calc_num(-1, buy_price)
+                        buy_num = self.calc_num(1, buy_price)
                         text = '%s\nSELL %d at %.3f, %s\nNext Sell: %d at %.3f\nNext Buy: %d at %.3f' % (self.holding.name, num, price, ('%.2f' if cost<0 else '+%.2f') % (cost,), sell_num, sell_price, buy_num, buy_price)
                         self.messager.msg(text)
             elif dt <= -1:
@@ -191,9 +191,9 @@ class LevelTrade(Trade):
                     ret = True
                     if self.messager:
                         sell_price = self.calc_price(level+1)
-                        sell_num = self.calc_num(+1, sell_price)
+                        sell_num = self.calc_num(1, sell_price)
                         buy_price = self.calc_price(level-1)
-                        buy_num = self.calc_num(-1, buy_price)
+                        buy_num = self.calc_num(1, buy_price)
                         text = '%s\nBUY %d at %.3f, %s\nNext Sell: %d at %.3f\nNext Buy: %d at %.3f' % (self.holding.name, num, price, ('%.2f' if -cost<0 else '+%.2f') % (-cost,), sell_num, sell_price, buy_num, buy_price)
                         self.messager.msg(text)
         return ret
