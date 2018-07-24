@@ -1,5 +1,5 @@
 #!/bin/bash
-getpath() {
+function getpath() {
     # 获取脚本所在目录
     SOURCE=$1
     while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
