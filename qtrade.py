@@ -117,8 +117,11 @@ class LevelTrade(Trade):
     _level = None
     mode = 0
     messager = None
-
     def __init__(self, holding, budget, min_price, max_price, level_chg, mode=0):
+        self.set(holding, budget, min_price, max_price, level_chg, mode)
+        self._level = self._max_level
+
+    def set(self, holding, budget, min_price, max_price, level_chg, mode=0):
         self.holding = holding
         self._budget = budget
         self.mode = mode
@@ -127,6 +130,9 @@ class LevelTrade(Trade):
         self._level_chg = level_chg
         self._max_level = self.calc_level(max_price)
         self._budget_per_level = 1.0 * self._budget / (self._max_level - 1)
+
+    def update_level(self, price):
+        self._level = self.calc_level(price)
 
     def calc_level(self, price):
         if self.mode == 4:
@@ -349,6 +355,9 @@ if __name__ == '__main__':
     file_name = symbol+'.rob'
     if os.path.exists(file_name):
         r = load_robot(file_name)
+        r.trade.set(r.holding, budget, low, high, chg, mode)
+        r._update_kline()
+        r.trade.update_level(r.kline.cur)
     else:
         m = DingTalk('https://oapi.dingtalk.com/robot/send?access_token=ca43851cd1f54ad16d7b16b3750e748a8c1687e3dfc98167e65e6470f2b54e6a')
         r = Robot(symbol, budget, low, high, chg, mode)
