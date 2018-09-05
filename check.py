@@ -3,6 +3,7 @@
 
 import socket
 import time
+import json
 import redis
 
 class BaseChecker:
@@ -77,10 +78,13 @@ class Check:
                 "name": item["name"],
                 "type": typ,
                 "params": params,
-                "status": status
+                "status": status,
                 "last_check": time.time()
             }
-            tosets[key] = toset
+            tosets[key] = json.dumps(toset)
 
+        print(tosets)
         cache.mset(tosets)
 
+svc = Check()
+svc.start()
