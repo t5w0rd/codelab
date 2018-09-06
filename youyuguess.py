@@ -85,6 +85,7 @@ def guess(user, passwd, up=True, headless=True):
         return
 
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
+    time.sleep(1)
     btn.click()
 
     #div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
