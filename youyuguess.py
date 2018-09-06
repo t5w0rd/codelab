@@ -78,11 +78,17 @@ def guess(user, passwd, up=True, headless=True):
     btn = find_element_by_xpath(b, '//button[@class="btn_join"]')
     btn.click()
 
+    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    if div:
+        b.close()
+        b.quit()
+        return
+
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
     btn.click()
 
-    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
-    time.sleep(1)
+    #div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    time.sleep(3)
 
     b.close()
     b.quit()
@@ -90,7 +96,7 @@ def guess(user, passwd, up=True, headless=True):
 def batch():
     pairs = [
         ['13074626489', 'test1234'],
-        ['15726693688', 'xiang755896'],
+        ['15726693988', 'xiang755896'],
         ['13217816405', 'test1234'],
         ['15110001050', 'Reotest1234'],
         ['13942418454', 'Reotest1234'],
