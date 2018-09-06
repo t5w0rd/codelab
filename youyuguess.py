@@ -21,7 +21,7 @@ def find_element_by_xpath(browser, xpath):
     return tag
 
 def register(user, passwd, headless=True):
-    url = 'https://login-stage.youyu.hk/login/#!/register?type=mobile'
+    url = 'https://login.youyu.hk/login/#!/register?type=mobile'
 
     opt = selenium.webdriver.ChromeOptions()
     opt.headless = headless
@@ -53,7 +53,7 @@ def register(user, passwd, headless=True):
     b.quit()
 
 def guess(user, passwd, up=True, headless=True):
-    url = 'https://m-stage.youyu.cn/c/acts/prediction/?mid=CA001025#/'
+    url = 'https://m.youyu.cn/c/acts/prediction/?mid=CA001025#/'
 
     opt = selenium.webdriver.ChromeOptions()
     opt.headless = headless
@@ -79,6 +79,18 @@ def guess(user, passwd, up=True, headless=True):
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
     btn.click()
 
-    #b.close()
-    #b.quit()
+    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    time.sleep(1)
 
+    b.close()
+    b.quit()
+
+def batch():
+    pairs = [
+        ['13074626489', 'test1234'],
+        ['15726693688', 'xiang755896'],
+        ['13217816405', 'test1234'],
+        ['15110001050', 'Reotest1234'],
+        ['13942418454', 'Reotest1234'],
+        ['', ''],
+    ]
