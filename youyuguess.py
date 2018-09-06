@@ -4,6 +4,8 @@
 import selenium.webdriver
 import sys
 import time
+import math
+import random
 
 def find_element_by_xpath(browser, xpath):
     tag = None
@@ -92,5 +94,14 @@ def batch():
         ['13217816405', 'test1234'],
         ['15110001050', 'Reotest1234'],
         ['13942418454', 'Reotest1234'],
-        ['', ''],
+        ['18501115839', 'test1234'],
+        ['13941420885', 'test1234'],
+        ['17501078790', 'test1234'],
+        ['17610352168', '2857922521lhy'],
+        ['13842445375', '2857922521lhy']
     ]
+    
+    res = (random.random()<0.5)
+    for user, passwd in pairs:
+        guess(user, passwd, res, False)
+        res = not res
