@@ -24,7 +24,8 @@ def register(user, passwd, headless=True):
     url = 'https://login-stage.youyu.hk/login/#!/register?type=mobile'
 
     opt = selenium.webdriver.ChromeOptions()
-    opt.headless = headless
+    if headless:
+        opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
 
     b.get(url)
@@ -56,7 +57,8 @@ def guess(user, passwd, up=True, headless=True):
     url = 'https://m-stage.youyu.cn/c/acts/prediction/?mid=CA001025#/'
 
     opt = selenium.webdriver.ChromeOptions()
-    opt.headless = headless
+    if headless:
+        opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
 
     b.get(url)
