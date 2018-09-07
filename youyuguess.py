@@ -4,6 +4,8 @@
 import selenium.webdriver
 import sys
 import time
+import math
+import random
 
 def find_element_by_xpath(browser, xpath):
     tag = None
@@ -21,7 +23,7 @@ def find_element_by_xpath(browser, xpath):
     return tag
 
 def register(user, passwd, headless=True):
-    url = 'https://login-stage.youyu.hk/login/#!/register?type=mobile'
+    url = 'https://login.youyu.hk/login/#!/register?type=mobile'
 
     opt = selenium.webdriver.ChromeOptions()
     if headless:
@@ -54,7 +56,7 @@ def register(user, passwd, headless=True):
     b.quit()
 
 def guess(user, passwd, up=True, headless=True):
-    url = 'https://m-stage.youyu.cn/c/acts/prediction/?mid=CA001025#/'
+    url = 'https://m.youyu.cn/c/acts/prediction/?mid=CA001025#/'
 
     opt = selenium.webdriver.ChromeOptions()
     if headless:
@@ -78,9 +80,44 @@ def guess(user, passwd, up=True, headless=True):
     btn = find_element_by_xpath(b, '//button[@class="btn_join"]')
     btn.click()
 
+    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    if div:
+        b.close()
+        b.quit()
+        return
+
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
+    time.sleep(1)
     btn.click()
 
-    #b.close()
-    #b.quit()
+    #div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    time.sleep(3)
 
+    b.close()
+    b.quit()
+
+def batch():
+    pairs = [
+
+        ['13074626489', 'test1234'],
+        ['15726693988', 'xiang755896'],
+        ['13366034990', 'xiang755896'],
+        ['13552218637', '0208suixin'],
+        ['13998192096', 'wb8131790'],
+        ['17640199716', 'wb8131790'],
+        ['16619970443', 'wyy970327'],
+        ['13263516535', 'wyy970327'],
+
+        ['13217816405', 'test1234'],
+        ['13942418454', 'Reotest1234'],
+        ['18501115839', 'test1234'],
+        ['13941420885', 'test1234'],
+        ['17501078790', 'test1234'],
+        ['17610352168', '2857922521lhy'],
+        ['13842445375', '2857922521lhy']
+    ]
+    
+    res = (random.random()<0.5)
+    for user, passwd in pairs:
+        guess(user, passwd, res, False)
+        res = not res
