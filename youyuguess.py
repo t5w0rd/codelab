@@ -7,7 +7,7 @@ import time
 import math
 import random
 
-def find_element_by_xpath(browser, xpath):
+def find_element_by_xpath(browser, xpath, timeout=-1):
     tag = None
     while tag is None:
         try:
@@ -17,6 +17,9 @@ def find_element_by_xpath(browser, xpath):
                 raise Exception('tag is not visible')
 
         except:
+            if timeout == 0:
+                return tag
+            timeout -= 1
             time.sleep(1)
 
     time.sleep(0.1)
@@ -26,6 +29,7 @@ def register(user, passwd, headless=True):
     url = 'https://login.youyu.hk/login/#!/register?type=mobile'
 
     opt = selenium.webdriver.ChromeOptions()
+    opt.add_argument('--proxy-server=10.0.0.226:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
@@ -59,6 +63,7 @@ def guess(user, passwd, up=True, headless=True):
     url = 'https://m.youyu.cn/c/acts/prediction/?mid=CA001025#/'
 
     opt = selenium.webdriver.ChromeOptions()
+    opt.add_argument('--proxy-server=10.0.0.226:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
@@ -79,16 +84,17 @@ def guess(user, passwd, up=True, headless=True):
 
     btn = find_element_by_xpath(b, '//button[@class="btn_join"]')
     btn.click()
-
-    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
+    
+    div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]', timeout=3)
     if div:
         b.close()
         b.quit()
         return
 
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
-    time.sleep(1)
+    #time.sleep(1)
     btn.click()
+    print '%s: %s' % (user, 'up' if up else 'down')
 
     #div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]')
     time.sleep(3)
@@ -96,7 +102,7 @@ def guess(user, passwd, up=True, headless=True):
     b.close()
     b.quit()
 
-def batch():
+def batch(index=0):
     pairs = [
 
         ['13074626489', 'test1234'],
@@ -119,5 +125,8 @@ def batch():
     
     res = (random.random()<0.5)
     for user, passwd in pairs:
-        guess(user, passwd, res, False)
-        res = not res
+        if index == 0:
+            guess(user, passwd, res, False)
+            res = not res
+        else:
+            index -= 1
