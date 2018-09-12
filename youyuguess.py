@@ -100,6 +100,13 @@ def guess(user, passwd, up=True, headless=True):
         b.quit()
         return
 
+    div = find_element_by_xpath(b, u'//div[@class="wechat_code"]', timeout=0)
+    if div:
+        print '%s: %s' % (user, div.text)
+        b.close()
+        b.quit()
+        return
+
     btn = find_element_by_xpath(b, '//button[@class="'+('goup bounceLeft' if up else 'godown bounceRight')+'"]')
     #time.sleep(1)
     btn.click()
