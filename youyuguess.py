@@ -31,6 +31,7 @@ def register(user, passwd, headless=True):
 
     opt = selenium.webdriver.ChromeOptions()
     #opt.add_argument('--proxy-server=10.0.0.226:53128')
+    opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
@@ -65,6 +66,7 @@ def guess(user, passwd, up=True, headless=True):
 
     opt = selenium.webdriver.ChromeOptions()
     #opt.add_argument('--proxy-server=10.0.0.226:53128')
+    opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
@@ -91,6 +93,13 @@ def guess(user, passwd, up=True, headless=True):
     
     div = find_element_by_xpath(b, u'//div[contains(text(), "等待开奖中")]', timeout=3)
     if div:
+        b.close()
+        b.quit()
+        return
+    
+    div = find_element_by_xpath(b, u'//div[@class="wechat_code"]', timeout=0)
+    if div:
+        print '%s: %s' % (user, div.text)
         b.close()
         b.quit()
         return
