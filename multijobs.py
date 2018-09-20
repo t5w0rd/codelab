@@ -13,8 +13,8 @@ def multijobs(target, argslist, workers=None):
     # target wrapper
     def worker(target, args):
         try:
-            res = target(*args)
             pid = os.getpid()
+            res = target(*args)
             msgq.put((pid, res))
         except Exception, e:
             msgq.put((pid, e))

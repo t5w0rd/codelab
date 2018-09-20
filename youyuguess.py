@@ -6,6 +6,7 @@ import sys
 import time
 import math
 import random
+import multijobs
 
 def find_element_by_xpath(browser, xpath, timeout=-1):
     tag = None
@@ -73,6 +74,9 @@ def guess(user, passwd, up=True, headless=True):
     btn = find_element_by_xpath(b, '//button[@class="btn_join"]')
     btn.click()
 
+    div = find_element_by_xpath(b, u'//div[@class="content" and text()="登录"]')
+    div.click()
+
     ipt = find_element_by_xpath(b, '//input[@class="longer"]')
     ipt.send_keys(user)
 
@@ -111,31 +115,63 @@ def guess(user, passwd, up=True, headless=True):
 
 def batch(index=0):
     pairs = [
-
-        ['13074626489', 'test1234'],
-        ['15726693988', 'xiang755896'],
-        ['13366034990', 'xiang755896'],
-        ['13552218637', '0208suixin'],
-        ['13998192096', 'wb8131790'],
-        ['17640199716', 'wb8131790'],
-        ['16619970443', 'wyy970327'],
-        ['13263516535', 'wyy970327'],
-
-        ['13217816405', 'test1234'],
-        ['13942418454', 'Reotest1234'],
-        ['18501115839', 'test1234'],
-        ['13941420885', 'test1234'],
-        ['17501078790', 'test1234'],
-        ['17610352168', '2857922521lhy'],
-        ['13842445375', '2857922521lhy']
+        ['13074626489', 'test1234', False],
+        ['15726693988', 'xiang755896', True],
+        ['13366034990', 'xiang755896', False],
+        ['13552218637', '0208suixin', True],
+        ['13998192096', 'wb8131790', False],
+        
+        ['17640199716', 'wb8131790', True],
+        ['16619970443', 'wyy970327', False],
+        ['13263516535', 'wyy970327', True],
+        ['13217816405', 'test1234', False],
+        ['13942418454', 'Reotest1234', True],
+        
+        ['18501115839', 'test1234', False],
+        ['13941420885', 'test1234', True],
+        ['17501078790', 'test1234', False],
+        ['17610352168', '2857922521lhy', True],
+        ['13842445375', '2857922521lhy', False]
     ]
     
     res = (random.random()<0.5)
-    for user, passwd in pairs:
+    for user, passwd, toguess in pairs:
         if index == 0:
-            guess(user, passwd, res, False)
+            guess(user, passwd, res^toguess, False)
             res = not res
         else:
             index -= 1
 
-batch()
+
+def multibatch():
+    arglists = ( 
+        ([['13074626489', 'test1234', False],
+        ['15726693988', 'xiang755896', True],
+        ['13366034990', 'xiang755896', False]],),
+        
+        ([['13552218637', '0208suixin', True],
+        ['13998192096', 'wb8131790', False],
+        ['17640199716', 'wb8131790', True]],),
+
+        ([['16619970443', 'wyy970327', False],
+        ['13263516535', 'wyy970327', True],
+        ['13217816405', 'test1234', False]],),
+
+        ([['13942418454', 'Reotest1234', True],
+        ['18501115839', 'test1234', False],
+        ['13941420885', 'test1234', True]],),
+
+        ([['17501078790', 'test1234', False],
+        ['17610352168', '2857922521lhy', True],
+        ['13842445375', '2857922521lhy', False]],)
+    )  
+    
+    res = (random.random()<0.5)
+    def worker(pairs):
+        for user, passwd, toguess in pairs:
+            guess(user, passwd, res^toguess, False)
+
+    res = multijobs.multijobs(worker, arglists)
+    print res
+
+multibatch()
