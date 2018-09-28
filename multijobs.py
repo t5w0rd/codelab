@@ -3,6 +3,7 @@
 import os
 import multiprocessing
 import collections
+import traceback
 
 def multijobs(target, argslist, workers=None):
     if not workers:
@@ -13,11 +14,11 @@ def multijobs(target, argslist, workers=None):
     # target wrapper
     def worker(target, args):
         try:
-            res = target(*args)
             pid = os.getpid()
-            msgq.put((pid, res))
+            res = target(*args)
+            msgq.put((pid, res, None))
         except Exception, e:
-            msgq.put((pid, e))
+            msgq.put((pid, None, (e, traceback.format_exc())))
 
     # add proc to waiting
     waiting = collections.deque()
@@ -43,8 +44,8 @@ def multijobs(target, argslist, workers=None):
 
         # if len(running) > 0, wait for blocking msgq.get() instead of time.sleep()
         for i in xrange(dataNum):
-            pid, res = msgq.get()
-            results[pid] = res
+            pid, res, err = msgq.get()
+            results[pid] = (res, err)
         dataNum = 0
 
         # check proc is alive or not
@@ -61,8 +62,8 @@ def multijobs(target, argslist, workers=None):
 
     # put msgq data left to results map
     while not msgq.empty():
-        pid, res = msgq.get()
-        results[pid] = res
+        pid, res, err = msgq.get()
+        results[pid] = (res, err)
     msgq.close()
 
     # collect retults of child proc

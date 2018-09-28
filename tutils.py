@@ -1075,11 +1075,14 @@ def multijobs(target, argslist, workers=None):
     workers = min(len(argslist), workers)
     msgq = multiprocessing.Queue()
 
-    # target wapper
+    # target wrapper
     def worker(target, args):
-        res = target(*args)
-        pid = os.getpid()
-        msgq.put((pid, res))
+        try:
+            pid = os.getpid()
+            res = target(*args)
+            msgq.put((pid, res, None))
+        except Exception, e:
+            msgq.put((pid, None, (e, traceback.format_exc())))
 
     # add proc to waiting
     waiting = collections.deque()
@@ -1105,8 +1108,8 @@ def multijobs(target, argslist, workers=None):
 
         # if len(running) > 0, wait for blocking msgq.get() instead of time.sleep()
         for i in xrange(dataNum):
-            pid, res = msgq.get()
-            results[pid] = res
+            pid, res, err = msgq.get()
+            results[pid] = (res, err)
         dataNum = 0
 
         # check proc is alive or not
@@ -1123,8 +1126,8 @@ def multijobs(target, argslist, workers=None):
 
     # put msgq data left to results map
     while not msgq.empty():
-        pid, res = msgq.get()
-        results[pid] = res
+        pid, res, err = msgq.get()
+        results[pid] = (res, err)
     msgq.close()
 
     # collect retults of child proc
@@ -1599,7 +1602,7 @@ def main():
             for host, port in raddrs:
                 argslist.append((host, port, user, passwd, cmd))
             res = multijobs(_sshExecWorker, argslist, workers=len(argslist))
-            for out, err in res:
+            for (out, err), exc in res:
                 sys.stdout.write(out)
                 if err:
                     sys.stdout.write(err)
