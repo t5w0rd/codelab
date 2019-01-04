@@ -1,9 +1,7 @@
-#include <sys/times.h>
-#include <sys/types.h>
 #include <unistd.h>
+#include <sys/times.h>
 
-int main()
-{
+int main() {
     struct timeval tv;
     struct tms clk;
     for (;;) {
