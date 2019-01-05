@@ -1,22 +1,23 @@
 #!/bin/sh
 
 type_password() {
-    local user=$1
-    local pass=""
-    local pass2="-"
-    while [ "$pass" != "$pass2" ]; do
-        echo -n "${user}'s password: "; stty -echo; read pass; stty echo; echo
-        echo -n 'Retype password: '; stty -echo; read pass2; stty echo; echo
-        if [ "$pass" != "$pass2" ]; then
+    local _user=$1
+    local _pass=""
+    local _pass2="-"
+    while [ "$_pass" != "$_pass2" ]; do
+        echo -n "$_user's password: "; stty -echo; read _pass; stty echo; echo
+        echo -n 'Retype password: '; stty -echo; read _pass2; stty echo; echo
+        if [ "$_pass" != "$_pass2" ]; then
             echo 'Sorry, passwords do not match.'
             continue
         fi  
-        if [ -z "$pass" ]; then
+        if [ -z "$_pass" ]; then
             echo 'Sorry, passwords cannot be empty.'
-            pass2="-"
+            _pass2="-"
         fi  
     done
-    echo $pass
+    eval $2=$_pass
 }
 
-type_password root
+type_password root pass
+echo "pass: $pass"

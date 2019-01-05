@@ -31,7 +31,7 @@ def register(user, passwd, headless=True):
 
     opt = selenium.webdriver.ChromeOptions()
     #opt.add_argument('--proxy-server=10.0.0.226:53128')
-    opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
+    #opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
@@ -66,7 +66,7 @@ def guess(user, passwd, up=True, headless=True):
 
     opt = selenium.webdriver.ChromeOptions()
     #opt.add_argument('--proxy-server=10.0.0.226:53128')
-    opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
+    #opt.add_argument('--proxy-server=tvpsx.tutils.com:53128')
     if headless:
         opt.set_headless()
     b = selenium.webdriver.Chrome(options=opt)
