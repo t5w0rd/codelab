@@ -5,6 +5,8 @@ import multiprocessing
 import collections
 import traceback
 
+__all__ = ['multijobs', 'splitlist']
+
 def multijobs(target, argslist, workers=None):
     if not workers:
         workers = multiprocessing.cpu_count()
