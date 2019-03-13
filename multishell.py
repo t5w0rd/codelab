@@ -19,12 +19,15 @@ def colorstr(s, color, bg=False):
 
 def _read_output(q, sp):
     pid = os.getpid()
+
     def _read_stderr():
         while True:
             ln = sp.stderr.readline()
             if not ln:
                 break
-            q.put((pid, ln, True))
+            q.put((pid, ln, False))
+    t = threading.Thread(target=_read_stderr)
+    t.start()
 
     while True:
         ln = sp.stdout.readline()
@@ -32,8 +35,6 @@ def _read_output(q, sp):
             break
         q.put((pid, ln, False))
 
-    t = threading.Thread(target=_read_stderr)
-    t.start()
     t.join()
     q.put((0, pid, False))
 
@@ -65,6 +66,7 @@ def multishell(argvs_list, shell=False):
 
         info = pmap[pid]
         sys.stdout.write(colorstr(info['prefix']+ln, info['color'], bg))
+        #print colorstr(info['prefix']+ln, info['color'], bg)
 
     for info in pmap.itervalues():
         info['obj'].join()
