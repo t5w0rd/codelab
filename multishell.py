@@ -6,7 +6,7 @@ import subprocess
 import multiprocessing
 import threading
 
-__all__ = ['multiexec',]
+__all__ = ['multishell',]
 
 def usage():
     print 'Usage:'
@@ -37,7 +37,7 @@ def _read_output(q, sp):
     t.join()
     q.put((0, pid, False))
 
-def multiexec(argvs_list, shell=False):
+def multishell(argvs_list, shell=False):
     q = multiprocessing.Queue()
     pmap = {}
     for i, argvs in enumerate(argvs_list):
@@ -72,5 +72,6 @@ def multiexec(argvs_list, shell=False):
     q.close()
 
 if __name__ == '__main__':
-    multiexec(('/usr/bin/uname', '/usr/bin/ssh --help'), shell=True)
+    multishell(('/usr/bin/uname', '/usr/bin/ssh --help'), shell=True)
     #multiexec((('/usr/bin/uname',), ('/usr/bin/uname',)))
+    multishell(sys.argv[1:], shell=True)
