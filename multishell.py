@@ -72,6 +72,6 @@ def multishell(argvs_list, shell=False):
     q.close()
 
 if __name__ == '__main__':
-    multishell(('/usr/bin/uname', '/usr/bin/ssh --help'), shell=True)
+    #multishell(('/usr/bin/uname', '/usr/bin/ssh --help'), shell=True)
     #multiexec((('/usr/bin/uname',), ('/usr/bin/uname',)))
     multishell(sys.argv[1:], shell=True)
