@@ -10,7 +10,7 @@ __all__ = ['multishell',]
 
 def usage():
     print 'Usage:'
-    print '  %s <CHILD1> [CHILD2] ...' % (sys.argv[0])
+    print '  %s <CMD1> [CMD2] ...' % (sys.argv[0],)
 
 color_format = '\033[%dm%%s\033[0m'  # fg:30-37, bg:40-47
 
@@ -26,6 +26,7 @@ def _read_output(q, sp):
             if not ln:
                 break
             q.put((pid, ln, False))
+
     t = threading.Thread(target=_read_stderr)
     t.start()
 
@@ -46,6 +47,7 @@ def multishell(argvs_list, shell=False):
             name = os.path.basename(argvs.split()[0])
         else:
             name = os.path.basename(argvs[0])
+
         sp = subprocess.Popen(argvs, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p = multiprocessing.Process(target=_read_output, args=(q, sp))
         p.start()
@@ -66,7 +68,6 @@ def multishell(argvs_list, shell=False):
 
         info = pmap[pid]
         sys.stdout.write(colorstr(info['prefix']+ln, info['color'], bg))
-        #print colorstr(info['prefix']+ln, info['color'], bg)
 
     for info in pmap.itervalues():
         info['obj'].join()
@@ -76,4 +77,7 @@ def multishell(argvs_list, shell=False):
 if __name__ == '__main__':
     #multishell(('/usr/bin/uname', '/usr/bin/ssh --help'), shell=True)
     #multiexec((('/usr/bin/uname',), ('/usr/bin/uname',)))
+    if len(sys.argv) < 2:
+        usage()
+        sys.exit(1)
     multishell(sys.argv[1:], shell=True)
