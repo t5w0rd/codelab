@@ -5,8 +5,7 @@ __all__ = ['shell']
 import os
 
 def shell(cmd):
-    pipe = os.popen(cmd)
-    out = pipe.read()
-    pipe.close()
-    return out
+    with os.popen(cmd) as pipe:
+        out = pipe.read()
+        return out
 
