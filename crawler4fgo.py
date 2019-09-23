@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#coding:utf-8
 
 import requests
 from lxml import etree
@@ -156,4 +157,4 @@ def invoke_parser(url, parser, *args):
 
 
 if __name__ == '__main__':
-    invoke_parser(None, load_csv_file, 'fgo.txt')
+    invoke_parser(None, load_csv_file, 'fgo_csv.txt')
