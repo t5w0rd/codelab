@@ -23,7 +23,8 @@ def try_xpath(html, xpath_fmt, *args):
 
 servant_page_url_fmt = get_full_url(r'/w/{name_link}')
 
-servant_card_names = ['初始状态', '灵基再临I', '灵基再临Ⅲ', '灵基再临Ⅳ', '愚人节']
+servant_card_names = ['初始状态', '灵基再临I', '灵基再临Ⅲ', '灵基再临Ⅳ', '愚人节', '初始状态～灵基再临Ⅲ', '初始状态~灵基再临Ⅲ', '普通']
+# servant_card_names = ['初始状态～灵基再临Ⅲ', '初始状态~灵基再临Ⅲ', '普通']
 
 servant_card_page_xpath_fmt = r'//div[@title="{}"]/p/a/@href'
 
@@ -78,6 +79,7 @@ def parse_servants_data(data, servants_data):
         next_url = servant_page_url_fmt.format_map(servant)
         yield next_url, parse_servant_page, (servant,)
 
+
 def parse_servant_page(data, servant):
     """
     解析从者页
@@ -129,13 +131,12 @@ def save_servant_card_image(data, servant, card_name):
         fp.write(data)
 
 
-def invoke_parser(url, parser, *args):
+def invoke_parser(url, parser, args, add_parse_item):
     def next_invoke(cur_result):
         if isinstance(cur_result, tuple) and len(cur_result) == 3:
             next_url, next_parser, next_args = cur_result
-            print('下轮析器进入队列[{}]'.format(next_parser.__name__))
-            # FIXME: enque
-            invoke_parser(next_url, next_parser, *next_args)
+            print('新增解析项[{}]'.format(next_parser.__name__))
+            add_parse_item(next_url, next_parser, next_args)
         elif cur_result is None:
             pass
         else:
@@ -143,7 +144,7 @@ def invoke_parser(url, parser, *args):
 
     data = None
     if url is not None:
-        print('加载[{}]'.format(url))
+        print('获取[{}]'.format(url))
         with requests.get(url) as rsp:
             data = rsp.content
 
@@ -156,5 +157,47 @@ def invoke_parser(url, parser, *args):
         next_invoke(res)
 
 
+def simple_add_parse_item(url, parser, args):
+    invoke_parser(url, parser, args, simple_add_parse_item)
+
+
+
+import multiprocessing
+import multiprocessing.pool
+from typing import Optional
+import threading
+
+
+
+mgr = None
+pool = None
+q = None
+
+
+def multi_parse_add(url, parser, args):
+    print('xxxxxx')
+    global q
+    q.put((url, parser, args))
+    print('bbbb')
+
+
+def multi_worker(q):
+    while True:
+        item = q.get()
+        url, parser, args = item
+        invoke_parser(url, parser, args, multi_parse_add)
+
+
+def start_multi_crawler(workers=4):
+    global mgr, pool, q
+    mgr = multiprocessing.Manager()
+    q = mgr.Queue()
+    pool = multiprocessing.Pool(workers)
+    res = pool.starmap_async(multi_worker, [(q,)] * workers)
+    multi_parse_add(None, load_csv_file, ('fgo_csv.txt',))
+    res.get()
+
+
 if __name__ == '__main__':
-    invoke_parser(None, load_csv_file, 'fgo_csv.txt')
+    #simple_add_parse_item(None, load_csv_file, ('fgo_csv.txt',))
+    start_multi_crawler(8)
