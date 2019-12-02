@@ -52,19 +52,19 @@ CheckList = [
         "key": "check_001",
         "name": "McVillage Server",
         "type": "tcp",
-        "params": "10.0.0.112:25565"
+        "params": "mc.tutils.com:25565"
     }, {
         "id": "002",
         "key": "check_002",
         "name": "TwiForest Server",
         "type": "tcp",
-        "params": "10.0.0.112:25566"
+        "params": "mc.tutils.com:25566"
     }, {
         "id": "003",
         "key": "check_003",
         "name": "Ubuntu SSH Server",
         "type": "tcp",
-        "params": "10.0.0.226:56022"
+        "params": "10.0.0.112:56022"
     }
 ]
 
