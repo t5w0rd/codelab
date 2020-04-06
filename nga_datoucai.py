@@ -12,8 +12,8 @@ import urllib.parse
 
 notify_url = r'https://oapi.dingtalk.com/robot/send?access_token=924087974c083883dce8820b58ffacd95570fe53c55aabb002ec60d14b278460'
 secret = r'SECd00250727f2cd97d897b3387fe2aeedd2354a85e8ebed1cf32ac49cf6d141e45'
-username = r'ligh0721'
-password = r'31032466'
+username = r'username'
+password = r'password'
 
 url = r'https://bbs.nga.cn/thread.php?stid=21103085'
 tfmt = r'%y-%m-%d %H:%M'
@@ -151,7 +151,7 @@ def monitor(c):
 
 def main():
     c = chrome()
-    login(c)
+    #login(c)
     monitor(c)
 
 
