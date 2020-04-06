@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import selenium.webdriver
+import random
 import time
 import requests
 import hmac
@@ -108,7 +109,8 @@ def monitor(c):
     first = True
 
     while True:
-        c.get(url)
+        url_with_rand = r'{}&rand={}'.format(url, random.randint(0, 999))
+        c.get(url_with_rand)
         time.sleep(20)
 
         try:
