@@ -38,7 +38,7 @@ yield     <-|->  resume
 6. 什么时候应该去yield呢，用一个常见的情景
 
 ```lua
-func = function(a, b, c)
+local func = function(a, b, c)
     x, y, z = coroutine.yield(a + b, b + c, c + a)
     return x, y, z
 end
