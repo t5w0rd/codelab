@@ -178,6 +178,7 @@ event_loop(engine)
 ### 曾经制作的一款游戏，计算插播渲染
 ```python
 def render_loop():
-    render()  # 载荷函数
-    sleep(t)  # 控制帧率
+    while True:
+        render()  # 载荷函数
+        sleep(1/60 - time_of_render)  # 控制帧率
 ```
