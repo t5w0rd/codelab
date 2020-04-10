@@ -28,6 +28,10 @@
 
 4. 协程模型最重要的两个控制语义yield和resume；
 浅层面的理解：yield是放弃执行使协程暂停，在协程主体函数内部调用；resume是恢复暂停中的协程使其继续执行，在普通lua逻辑中调用；而更深层面的理解是：协程的主体逻辑的运行环境跟外部普通逻辑的运行环境相当于是不同的两个世界。两个世界不会同时运转，但会通过yield和resume交替运转。yield将使世界的执行权从协程转向外层世界，resume使执行权从普通世界转向协程世界；
+```
+coroutine vm|real lua
+yield     <-|->  resume
+```
 
 5. resume和yield的“带货”(数据交换)，通常它们在交换执行权的时候还会给对方带点“货”，即resume的参数会通过yield返回，yield的参数会通过resume返回
 
@@ -43,9 +47,6 @@ local co = coroutine.create(func)
 
 print("resume", coroutine.resume(co, 1, 2, 3))
 print("resume", coroutine.resume(co, 1, 2, 3))
-
-coroutine vm|real lua
-yield     <-|->  resume
 
 -- 打印 resume true 3 5 4 yield时，返回yield的参数
 -- 打印 resume true 1 2 3 resume时，返回resume的参数
