@@ -23,7 +23,7 @@ def try_xpath(html, xpath_fmt, *args):
 
 servant_page_url_fmt = get_full_url(r'/w/{name_link}')
 
-servant_card_names = ['初始状态', '灵基再临I', '灵基再临Ⅲ', '灵基再临Ⅳ', '愚人节', '初始状态～灵基再临Ⅲ', '初始状态~灵基再临Ⅲ', '普通']
+servant_card_names = ['初始状态', '灵基再临I', '灵基再临Ⅲ', '灵基再临Ⅳ', '愚人节', '初始状态～灵基再临Ⅲ', '初始状态~灵基再临Ⅲ', '普通', '灵衣']
 # servant_card_names = ['初始状态～灵基再临Ⅲ', '初始状态~灵基再临Ⅲ', '普通']
 
 servant_card_page_xpath_fmt = r'//div[@title="{}"]/p/a/@href'
@@ -168,17 +168,14 @@ from typing import Optional
 import threading
 
 
-
 mgr = None
 pool = None
 q = None
 
 
 def multi_parse_add(url, parser, args):
-    print('xxxxxx')
     global q
     q.put((url, parser, args))
-    print('bbbb')
 
 
 def multi_worker(q):

@@ -110,6 +110,7 @@ def monitor(c):
 
     while True:
         url_with_rand = r'{}&rand={}'.format(url, random.randint(0, 999))
+        c.delete_all_cookies()
         c.get(url_with_rand)
         time.sleep(20)
 
