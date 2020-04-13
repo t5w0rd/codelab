@@ -67,8 +67,10 @@ print("resume", coroutine.resume(co, 1, 2, 3))
 
 ```python
 def event_loop:
-    event = event_wait(reg_event_list)
-    handle(event)
+    while True:
+        event = event_wait(reg_event_list)
+        handle(event)
+
 
 def handle(event):
     ...
@@ -81,17 +83,21 @@ def handle(event):
 def create_event_engine():
     pass
 
+
 def event_wait(engine):
     pass
+
 
 def reg_event(engine, event_key, hansdler):
     event.key = event_key
     event.handler = handler
 
+
 def event_loop(engine):
     while True:
         event = event_wait(engine)
         event_dispatch(event)
+
 
 def event_dispatch(engine, event):
     handler = engine.handlers[event.key]
@@ -114,7 +120,7 @@ async def get_msg(url):
     await db.write(rsp)
 
 
-aysnc def main():
+async def main():
     co1 = get_msg(url1)
     co2 = get_msg(url2)
     await asyncio.gather(co1, co2)
