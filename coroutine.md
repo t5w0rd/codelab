@@ -188,3 +188,4 @@ def render_loop():
         render()  # 载荷函数
         sleep(1/60 - time_of_render)  # 控制帧率
 ```
+所有的游戏逻辑都在render()中，当render负载过重，会导致游戏掉帧。有些循环计算可以根据计算时间主动yield，下一帧的时候再resume，继续计算。
