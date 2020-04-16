@@ -142,7 +142,25 @@ class Seller:
             return pickle.load(fp)
 
 
+def load_history():
+    global history
+    try:
+        with open('islands.history', 'rb') as  fp:
+            history = pickle.load(fp)
+    except:
+        history = set()
+
+
+def dump_history():
+    with open('islands.history', 'wb') as  fp:
+        global history
+        pickle.dump(history, fp)
+
+
 def single_seller_robot(name, strategy):
+    global history
+    load_history()
+
     seller = Seller()
     
     state = 'init'
@@ -161,6 +179,7 @@ def single_seller_robot(name, strategy):
                 print('[{}] {} 岛数量:{}\n'.format(code, msg, len(islands)))
                 island_id = strategy(islands)
                 if island_id is not None:
+                    history.add(island_id)
                     island = islands[island_id]
                     print('<{}>加入<{}>岛的等候队伍...'.format(name, island['name']), end='')
                     code, msg = seller.seller_join(island_id)
@@ -193,8 +212,16 @@ def single_seller_robot(name, strategy):
                 elif code == 1:
                     # 排到队首
                     print('\n可以登岛\n')
+                    src = '{}_queue.seller'.format(seller.seller_id)
+                    dst = '{}_enter.seller'.format(seller.seller_id)
+                    try:
+                        os.rename(src, dst)
+                    except:
+                        pass
+
+                    dump_history()
                     
-                    cmd = '{} {}.seller'.format(sys.argv[0], seller.seller_id)
+                    cmd = '{} {}'.format(sys.argv[0], dst)
                     text = '岛:{name} 价格:{price} 密码:{password}\n备注:{remark}\n取消:{cmd}'.format(cmd=cmd, **island)
                     print(text)
                     data = {
@@ -359,14 +386,20 @@ def multi_seller_robot(name, strategy, max_sellers):
 
 
 def test_strategy(islands):
-    for island_id, island in islands.items():
+    global history
+    sorted_islands = sorted(islands.items(), key=lambda item:item[1]['queue_length'])
+    for island_id, island in sorted_islands:
+        if island_id in history:
+            continue
+
         name = island['name']
         price = island['price']
         remark = island['remark']
         seller_count = island['seller_count']
         max_seller = island['max_seller']
         queue_length = island['queue_length']
-        if name == '英格兰':
+        #if remark.find('妹妹') >= 0:
+        if price <= 300:
             return island_id
 
     return None
@@ -382,7 +415,8 @@ def test_multi_strategy(islands):
         seller_count = island['seller_count']
         max_seller = island['max_seller']
         queue_length = island['queue_length']
-        if price >= 450:
+        #if price >= 450:
+        if remark.find('妹妹') >= 0:
             ret.append(island_id)
 
     return ret
@@ -396,8 +430,8 @@ def seller_quit(fname):
 
 def main():
     if len(sys.argv) == 1:
-        #single_seller_robot('Alicia', test_strategy)
-        multi_seller_robot('t5w0rd', test_multi_strategy, 5)
+        single_seller_robot('Alicia', test_strategy)
+        #multi_seller_robot('t5w0rd', test_multi_strategy, 1)
     elif len(sys.argv) == 2:
         seller_quit(sys.argv[1])
         # quit all
