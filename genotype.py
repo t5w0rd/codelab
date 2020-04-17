@@ -11,12 +11,11 @@ mul_table = {
 }
 
 
-def gt_mul(gt1, gt2):
+def gt_mul(gt1: int, gt2: int):
     if gt1 <= gt2:
         return mul_table[(gt1<<2)|gt2]
     else:
         return mul_table[(gt2<<2)|gt1]
-
 
 
 class Genotype:
@@ -57,14 +56,13 @@ class Genotype:
         
         return n
 
-    def multiply(self, gt1: Union[str, int], gt2: Union[str, int]) -> List[Tuple[int, float]]:
+    def multiply(self, gt1: Union[int, str], gt2: Union[int, str]) -> List[Tuple[int, float]]:
         if isinstance(gt1, str):
             gt1 = self.numeric(gt1)
 
         if isinstance(gt2, str):
             gt2 = self.numeric(gt2)
 
-        ret = []
         a = [()] * (self._num + 1)
         for i in range(self._num):
             if i != 0:
@@ -88,13 +86,10 @@ class Genotype:
                     break
 
                 if len(st) == len(a) - 1:
-                    ret.append((gt_n, gt_p))
+                    yield gt_n, gt_p
 
                 i, gt_n, gt_p = st.pop()
                 i = i + 1
-
-        return ret
-
 
 
 if __name__ == '__main__':
@@ -103,6 +98,6 @@ if __name__ == '__main__':
     print(hex(g.numeric('RRYYWwss')))
     gt1, gt2 = 'rryyWwss', 'rryyWwss'
     res = g.multiply(gt1, gt2)
-    print(gt1, gt2)
+    print('{} x {}'.format(gt1, gt2))
     for gt_n, gt_p in res:
         print(g.alpha(gt_n), gt_p)
