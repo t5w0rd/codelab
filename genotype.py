@@ -73,6 +73,7 @@ class Genotype:
         st = []
         i = 0
         gt_n, gt_p = (0b0, 1.0)
+        ret = []
         while True:
             l = len(st)
             if i < len(a[l]):
@@ -86,10 +87,12 @@ class Genotype:
                     break
 
                 if len(st) == len(a) - 1:
-                    yield gt_n, gt_p
+                    ret.append((gt_n, gt_p))
 
                 i, gt_n, gt_p = st.pop()
                 i = i + 1
+
+        return ret
 
 
 if __name__ == '__main__':
