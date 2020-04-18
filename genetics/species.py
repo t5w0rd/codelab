@@ -43,7 +43,7 @@ def species_class(name: str, base_genotype: Genotype, base_phenotype: Dict[int, 
 
 if __name__ == '__main__':
     gt = Genotype('ryWs')
-    from phenotype import rose
+    from .phenotype import rose
     Rose = species_class('Rose', gt, rose)
 
     r = Rose(0xc1)
