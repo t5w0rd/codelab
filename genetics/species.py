@@ -1,4 +1,4 @@
-from genotype import Genotype
+from .genotype import Genotype
 from typing import Dict, Union, List, Tuple
 
 
