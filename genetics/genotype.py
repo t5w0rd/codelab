@@ -92,7 +92,6 @@ class Genotype:
                 i, gt_n, gt_p = st.pop()
                 i = i + 1
 
-        ret = sorted(ret, key=lambda x: '{}{}'.format(x[0].phenotype, x[1]), reverse=True)
         return ret
 
 
