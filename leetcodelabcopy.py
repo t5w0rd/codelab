@@ -37,6 +37,7 @@ def add_fav(fav_name):
             pass
     time.sleep(0.5)
     btn.click()
+    time.sleep(0.1)
 
 
 def gen_url(slug):
@@ -48,9 +49,11 @@ opt = selenium.webdriver.ChromeOptions()
 b = selenium.webdriver.Chrome(options=opt)
 b.get('https://leetcode-cn.com/problems/two-sum/')
 
-time.sleep(30)
+time.sleep(40)
 
 for i, q in enumerate(qs):
+    if i+1 <= 710:
+        continue
     url = gen_url(q['titleSlug'])
     b.get(url)
     add_fav(sys.argv[2])
