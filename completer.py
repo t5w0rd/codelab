@@ -3,6 +3,7 @@
 import readline
 import logging
 import os
+from aioconsole import ainput
 
 
 class Completer:
@@ -26,7 +27,18 @@ class Completer:
 
 def input_line(prompt=''):
     try:
-        line = input(prompt)
+        line = input(prompt=prompt)
+    except KeyboardInterrupt:
+        return False
+    except Exception:
+        return False
+
+    return line
+
+
+async def ainput_line(prompt=''):
+    try:
+        line = ainput(prompt=prompt)
     except KeyboardInterrupt:
         return False
     except Exception:
