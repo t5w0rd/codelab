@@ -199,6 +199,66 @@ async def go_buttons(controller_state: ControllerState):
     #await user_input
 
 
+async def run_cmds(controller_state: ControllerState, cmds: list, quit=None):
+    for e in cmds:
+        if isinstance(e, str):
+            await button_push(controller_state, e)
+        elif isinstance(e, (tuple, list)):
+            await button_push(controller_state, e[0], sec=e[1])
+        elif isinstance(e, (int, float)):
+            await asyncio.sleep(e)
+
+        if quit and quit.done():
+            break
+
+
+async def run_script(controller_state: ControllerState):
+    """
+    Example controller script.
+    Navigates to the "Test Controller Buttons" menu and presses all buttons.
+    """
+    if controller_state.get_controller() != Controller.PRO_CONTROLLER:
+        raise ValueError('This script only works with the Pro Controller!')
+
+    # waits until controller is fully connected
+    await controller_state.connect()
+
+    await ainput(prompt='Make sure the Switch is in the Home menu and press <enter> to continue.')
+
+    """
+    # We assume we are in the "Change Grip/Order" menu of the switch
+    await button_push(controller_state, 'home')
+
+    # wait for the animation
+    await asyncio.sleep(1)
+    """
+
+    user_input = asyncio.ensure_future(
+        ainput(prompt='Pressing all buttons... Press <enter> to stop.')
+    )
+
+    cmds = [
+        'a', 0.6, 'b', 1.5, 'a', 1.0,  # game
+        'a', 4.0, 'home', 1.0,  # room
+        'down', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'a', 1.0,  # os
+        ('down', 1.6), 'right', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'a', 0.5,  # settings
+        'down', 0.1, 'down', 0.1, 'a', 0.1,
+        'right', 0.1, 'right', 0.1, 'up', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'a', 0.1, 'home', 1.0, 'home', 1.5,  # time
+        'b', 0.5, 'a', 5.0  # room
+    ]
+    while True:
+        await run_cmds(controller_state, cmds, quit=user_input)
+
+        if user_input.done():
+            break
+
+    # await future to trigger exceptions in case something went wrong
+    await user_input
+
+    # go back to home
+    await button_push(controller_state, 'home')
+
+
 def ensure_valid_button(controller_state, *buttons):
     """
     Raise ValueError if any of the given buttons os not part of the controller state.
@@ -234,6 +294,13 @@ def _register_commands_with_controller_state(controller_state, cli):
     :param cli:
     :param controller_state:
     """
+    async def run():
+        """
+        run - run player script
+        """
+        await run_script(controller_state)
+
+    cli.add_command(run.__name__, run)
     async def go():
         """
         go - run player script
