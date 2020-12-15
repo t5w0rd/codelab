@@ -244,7 +244,7 @@ async def run_script(controller_state: ControllerState):
         ('down', 1.6), 'right', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'a', 0.5,  # settings
         'down', 0.1, 'down', 0.1, 'a', 0.1,
         'right', 0.1, 'right', 0.1, 'up', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'a', 0.1, 'home', 1.0, 'home', 1.5,  # time
-        'b', 0.5, 'a', 5.0  # room
+        'b', 1.0, 'a', 5.0  # room
     ]
     while True:
         await run_cmds(controller_state, cmds, quit=user_input)
