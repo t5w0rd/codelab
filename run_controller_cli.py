@@ -240,10 +240,10 @@ async def run_script(controller_state: ControllerState):
     cmds = [
         'a', 0.6, 'b', 1.5, 'a', 1.0,  # game
         'a', 4.0, 'home', 1.0,  # room
-        'down', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'a', 1.0,  # os
-        ('down', 1.6), 'right', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'down', 0.1, 'a', 0.5,  # settings
-        'down', 0.1, 'down', 0.1, 'a', 0.1,
-        'right', 0.1, 'right', 0.1, 'up', 0.1, 'right', 0.1, 'right', 0.1, 'right', 0.1, 'a', 0.1, 'home', 1.0, 'home', 1.5,  # time
+        'down', 0.5, ('right', 2.0), 'left', 0.3, 'a', 1.0,  # os
+        ('down', 2.0), 'right', 0.3, 'down', 0.3, 'down', 0.3, 'down', 0.3, 'down', 0.3, 'a', 0.5,  # settings
+        ('down', 1.5), 'a', 0.3,
+        'right', 0.1, 'right', 0.1, 'up', 0.1, ('right', 1.0), 'a', 0.5, 'home', 1.0, 'home', 1.5,  # time
         'b', 1.0, 'a', 5.0  # room
     ]
     while True:
@@ -332,6 +332,22 @@ def _register_commands_with_controller_state(controller_state, cli):
         await mash_button(controller_state, button, interval)
 
     cli.add_command(mash.__name__, mash)
+    
+    async def mash_a():
+        await mash_button(controller_state, 'a', 0.1)
+    cli.add_command('aa', mash_a)
+
+    async def mash_b():
+        await mash_button(controller_state, 'b', 0.1)
+    cli.add_command('bb', mash_b)
+
+    async def mash_x():
+        await mash_button(controller_state, 'x', 0.1)
+    cli.add_command('xx', mash_x)
+
+    async def mash_y():
+        await mash_button(controller_state, 'y', 0.1)
+    cli.add_command('yy', mash_y)
 
     # Hold a button command
     async def hold(*args):
