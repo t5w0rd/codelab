@@ -30,7 +30,7 @@ import shutil
 import traceback
 
 
-__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'tcpMapProxy', 'tcpMapAgent', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf', 'writeAttachData', 'readAttachData', 'shell']
+__all__ = ['net', 'XNet', 'tcpPtyIO', 'tcpRawStdIO', 'tcpMapProxy', 'tcpMapAgent', 'daemonize', 'multijobs', 'initLogger', 'StopWatch', 'SldeBuf', 'writeAttachData', 'readAttachData', 'shell', 'tutils_net']
 
 
 class Net:
@@ -1478,13 +1478,13 @@ def main():
     #op.add_option('-e', '--env', action='store', dest='env', type=str, help='Environment, must be set (tsM/sMt/tS/sT)')
     #op.add_option('-w', '--who', action='store', dest='who', type=str, help='Who, must be set (s/S/t/T/M)')
     op.add_option('-t', '--type', action='store', dest='type', type=str, help='type, positive or reverse, client or server, must be set (pc/ps/rc/rs/pspc/psrc)')
+    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
+    #op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
+    op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-l', '--local', action='store', dest='laddr', type=str, help='Address of local host, like 0.0.0.0:1234')
     op.add_option('-r', '--remote', action='store', dest='raddr', type=str, help='Address of remote host, like 192.168.1.101:1234')
     op.add_option('-c', '--command', action='store', dest='cmd', type=str, help='Command to be run, when connect')
     op.add_option('-m', '--mapping', action='store', dest='mapping', type=str, help='Address mapping pairs, like "0.0.0.0:10022,localhost:22,,localhost:8080,{http}"')
-    op.add_option('-d', '--daemon', action='store_true', dest='daemon', default=False, help='Run as a daemon process')
-    #op.add_option('-H', '--hide', action='store_true', dest='hide_argvs', default=False, help='Hide runtime argvs')
-    op.add_option('-L', '--loop', action='store_true', dest='loop', default=False, help='Client or server will loop forever')
     op.add_option('-u', '--user', action='store', dest='user', help='Username')
     op.add_option('-p', '--passwd', action='store', dest='passwd', help='Password')
     op.add_option('-a', '--address-list', action='store', dest='raddrs', type=str, help='Remote address list, like "111.2.3.4:22,222.3.4.5:22"')
@@ -1496,30 +1496,37 @@ def main():
         op.print_help()
         sys.exit(1)
     
-    function = args[0]
-    cmd = opts.cmd
-    daemon = opts.daemon
-    #hide_argvs = opts.hide_argvs
-    loop = opts.loop
-    passwd = opts.passwd
-    user = opts.user
-    cstype = opts.type
+    tutils_net(
+        args[0],
+        opts.type,
+        daemon=opts.daemon,
+        loop=opts.loop,
+        laddr=opts.laddr,
+        raddr=opts.raddr,
+        mapping=opts.mapping,
+        cmd=opts.cmd,
+        user=opts.user,
+        passwd=opts.passwd,
+        raddrs=opts.raddrs
+    )
 
-    if opts.laddr:
-        host, port = opts.laddr.split(':')
+
+def tutils_net(function, cstype, daemon=False, loop=False, laddr=None, raddr=None, mapping=None, cmd=None, user=None, passwd=None, raddrs=None):
+    if laddr:
+        host, port = laddr.split(':')
         port = int(port)
     else:
         host, port = None, None
 
-    if opts.raddr:
-        rhost, rport = opts.raddr.split(':')
+    if raddr:
+        rhost, rport = raddr.split(':')
         rport = int(rport)
     else:
         rhost, rport = None, None
 
-    if opts.mapping:
+    if mapping:
         mapping = []
-        for pair in opts.mapping.split(',,'):
+        for pair in mapping.split(',,'):
             laddr, raddr = pair.split(',')
             _host, _port = laddr.split(':')
             _port = int(_port)
@@ -1536,9 +1543,9 @@ def main():
     else:
         mapping = None
 
-    if opts.raddrs:
+    if raddrs:
         raddrs = []
-        for raddr in opts.raddrs.split(','):
+        for raddr in raddrs.split(','):
             _host, _port = raddr.split(':')
             _port = int(_port)
             raddrs.append((_host, _port))
@@ -1552,15 +1559,15 @@ def main():
         daemonize()
 
 
-    if 'HOME' in os.environ:
-        os.chdir(os.environ['HOME'])
+    #if 'HOME' in os.environ:
+    #    os.chdir(os.environ['HOME'])
 
     try:
         if function == 'pty':
             assert cstype
             assert not ((cstype == 'ps' or cstype == 'rs') and not cmd)
-            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr)
-            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr)
+            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not raddr)
+            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not laddr)
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, loop=loop)
@@ -1578,8 +1585,8 @@ def main():
         elif function == 'map':
             assert cstype
             assert not ((cstype == 'pc' or cstype == 'rc') and not mapping)
-            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not opts.raddr)
-            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not opts.laddr)
+            assert not ((cstype == 'pc' or cstype == 'rs' or cstype == 'pspc' or cstype == 'psrc') and not raddr)
+            assert not ((cstype == 'ps' or cstype == 'rc' or cstype == 'pspc' or cstype == 'psrc') and not laddr)
 
             if cstype == 'pc':
                 _net.positiveClient(rhost, rport, handler=_lmap, loop=loop, mapping=mapping)
